@@ -13,6 +13,19 @@ describe('route schema and persistence', () => {
     expect(route.holds[0].position[0]).not.toBe(9);
   });
 
+  it('preserves optional directional grip metadata and rejects unknown grips', () => {
+    const route = createDefaultRoute('gym');
+    const tagged = { ...route, holds: route.holds.map((hold, i) => i === 0 ? { ...hold, grip: 'undercling' } : hold) };
+    const restored = deserializeRoute(JSON.stringify(tagged));
+    expect((restored.holds[0] as unknown as { grip: string }).grip).toBe('undercling');
+    expect(() => validateRoute({ ...route, holds: [{ ...route.holds[0], grip: 'glue' }] })).toThrow('grip type');
+    const authored = { ...route, holds: [{ ...route.holds[0], gripPoint: [.02, .03, .05], gripNormal: [0, 0, 1], gripDirection: [0, -1, 0], gripStrength: .8, friction: .7, handAllowed: true, footAllowed: false }] };
+    expect(deserializeRoute(JSON.stringify(authored)).holds).toEqual(authored.holds);
+    expect(() => validateRoute({ ...route, holds: [{ ...route.holds[0], gripNormal: [0, 0, 0] }] })).toThrow('zero vector');
+    expect(() => validateRoute({ ...route, holds: [{ ...route.holds[0], gripStrength: 7 }] })).toThrow('range');
+    expect(() => validateRoute({ ...route, holds: [{ ...route.holds[0], footAllowed: 'yes' }] })).toThrow('boolean');
+  });
+
   it('rejects corrupt data and unsupported future formats', () => {
     const route = createDefaultRoute('gym');
     expect(() => validateRoute({ ...route, version: 2 })).toThrow('version');
@@ -51,6 +64,16 @@ describe('route schema and persistence', () => {
     const route = { ...createDefaultRoute('gym'), id: 'fallback-test' };
     store.save(route);
     expect(store.load(route.id)).toEqual(route);
+    expect(store.storageAvailable).toBe(false);
+  });
+
+  it('keeps newer session edits when storage fills after an earlier successful save', () => {
+    let persisted: string | null = null, full = false;
+    const store = new RouteStore({ getItem: () => persisted, setItem: (_key, value) => { if (full) throw new Error('quota'); persisted = value; } });
+    const route = { ...createDefaultRoute('gym'), id: 'quota-after-save', name: 'First version' };
+    store.save(route); full = true;
+    route.name = 'Latest version'; store.save(route);
+    expect(store.load(route.id)?.name).toBe('Latest version');
     expect(store.storageAvailable).toBe(false);
   });
 

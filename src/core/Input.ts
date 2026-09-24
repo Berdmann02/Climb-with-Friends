@@ -6,7 +6,7 @@ export class Input {
   constructor(public canvas:HTMLCanvasElement) {
     window.addEventListener('keydown', e => {
       if (this.typing()) return;
-      if (['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Backspace'].includes(e.code)) e.preventDefault();
+      if (['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Backspace','F3'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     });

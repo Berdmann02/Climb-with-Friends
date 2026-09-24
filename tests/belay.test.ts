@@ -65,4 +65,21 @@ describe('belay state transitions', () => {
     belay.update(NaN, 2);
     expect(Number.isFinite(belay.slack)).toBe(true);
   });
+
+  it('brakes partway through lowering without returning to the original catch height', () => {
+    const belay = new BelayController();
+    belay.beginFall(12, 10); step(belay, 3);
+    belay.setAction('lower'); step(belay, 2);
+    const height = belay.fallHeight!;
+    belay.setAction('lock'); step(belay, 1);
+    expect(Math.abs(belay.fallHeight! - height)).toBeLessThan(.15);
+    belay.setAction('lower'); step(belay, 1);
+    expect(belay.fallHeight).toBeLessThan(height - .7);
+  });
+
+  it('honors a lower requested while the rope is catching the fall', () => {
+    const belay = new BelayController();
+    belay.beginFall(8, 6); belay.setAction('lower'); step(belay, 3);
+    expect(belay.state).toBe('lowering');
+  });
 });

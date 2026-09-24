@@ -23,7 +23,7 @@ export class RouteEditor {
   private pointerMove=(e:PointerEvent)=>{
     if(!this.active||!this.dragging||!this.selected)return;
     if(new Vector2(e.clientX,e.clientY).distanceTo(this.downPoint)<4)return;
-    const p=this.point(e),hold=this.getSelected();if(p&&hold&&this.inside(p)){hold.position=[Math.round(p.x*20)/20,Math.round(p.y*20)/20,.12];this.changed=true;this.refresh();}
+    const p=this.point(e),hold=this.getSelected();if(p&&hold&&this.inside(p)){hold.position=[Math.round(p.x*20)/20,Math.round(p.y*20)/20,.12];this.changed=true;this.holds.updateTransform(hold);this.onChange();}
   };
   private pointerUp=()=>{if(this.dragging&&!this.changed)this.history.pop();this.dragging=false;};
   getSelected(){return this.route.holds.find(h=>h.id===this.selected);}

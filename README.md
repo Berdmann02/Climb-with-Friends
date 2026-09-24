@@ -35,8 +35,12 @@ Browser integration checks use Playwright through `npm run test:browser`. The de
 | General | Escape | Pause |
 | Gym | R / Set a route | Enter route workshop |
 | Climb | E | Start or leave the wall |
-| Climb | W / Space | Reach for the next valid hold |
-| Climb | A / S / D | Request a move in that direction |
+| Climb | Q / W | Release and directly control left / right hand |
+| Climb | A / S | Release and directly control left / right foot |
+| Climb | Mouse movement | Continuously reach with the free limb |
+| Climb | Left click | Grip the contacted hold, or plant a foot against the wall |
+| Climb | Backspace | Release the selected limb |
+| Developer | F3 | Toggle contact / center-of-mass overlay (off by default) |
 | Outdoor climb | C | Clip a nearby quickdraw |
 | Outdoor climb | X | Test a fall |
 | Outdoor | Tab | Switch climber / belayer roles |
@@ -45,7 +49,9 @@ Browser integration checks use Playwright through `npm run test:browser`. The de
 | Belay | Space | Brake / catch |
 | Belay | L | Lower partner |
 
-The camera stays behind the belayer and looks up toward the climber. In local belayer mode the partner can continue climbing, giving one person a way to test both halves of the system.
+Pressing a limb key removes its support immediately. The free hand or foot follows the mouse with damping and fixed anatomical limits; clicking only establishes contact if the limb has reached that surface. You can change direction before gripping, or switch limbs while leaving the previous limb detached. Attached contacts stay where you put them. Balance and body positioning update throughout the movement, with physical tension, slipping and falls instead of reach warnings. Right-drag orbits the camera without dragging the free target during the orbit.
+
+The camera stays behind the belayer and looks up toward the climber. In local belayer mode the partner maintains the last limb intentions and remains subject to stability. Switch back to control their limbs; there is no automatic route progression. The climber sees a short harness strand and nearby protection, while the belayer sees the full rope path.
 
 ## Route workshop
 
@@ -57,15 +63,18 @@ The camera stays behind the belayer and looks up toward the climber. In local be
 6. **Save route** stores it in this browser. The route shelf loads saved routes. **Export / Import** exchanges versioned route JSON files.
 7. **Test climb** leaves the editor and uses that same route in the climbing controller.
 
-Reach is limited. Very widely spaced handholds can create an impossible route; add closer contacts or reposition holds and test again. Feet seek suitable nearby holds and use a wall smear if none fits. Hold categories already have stable model identifiers, leaving room for future grip and fatigue rules.
+Feet stay where you put them. Release a foot, move it to bare wall and click to attempt a smear. A free leg affects rotational balance continuously through its position, without a flag button. Rotated jugs behave as sidepulls or underclings, and the workshop’s grip selector allows an explicit grip character. No reachable holds or recommended moves are highlighted.
 
 ## Current prototype
 
 - Two environments with intentionally different moods: a timber-and-plywood gym with a coffee corner, plants, cubbies, seating, shoes, gear, neighboring walls and crash pads; and a granite crag surrounded by evergreen forest, wildflowers and distant alpine ridges.
 - Third-person exploration with smooth acceleration, turning, ground behavior, static collision volumes, and camera collision avoidance.
 - Data-driven routes with editable holds, serialization, validation, local persistence and JSON interchange.
-- Contact-driven climbing requests with procedural two-bone limb placement, staggered hand and foot movement, and torso weight transfer.
-- A local climber/belayer pair, progressive quickdraw clipping, curved rope visualization, slack/tension feedback, fall/catch and lowering states.
+- Continuous four-limb climbing: release with Q/W/A/S, steer the free limb with the mouse, then click to grip. Each limb independently tracks contact, orientation, load and movement state; there is no timed move-to-hold sequence.
+- Per-frame constrained body and hip positioning, damped body inertia, fixed-length two-bone IK, grip-specific fingers and wrist orientation, toe/sole contact, smearing and geometric flagging.
+- Posture-dependent stability and arm strain throughout a reach, visible tension and trembling, a correction window, deterministic slipping and rope-caught falls. Moving a free limb back or establishing another contact can improve support before a fall.
+- Exact hold-surface ray contacts with fingertip/toe clearance. Initial grip locations are sampled from the existing hold meshes; bolt and route tape decorations cannot become grip surfaces.
+- A local climber/belayer pair, progressive quickdraw clipping, curved rope visualization, slack/tension feedback, fall/catch and lowering states. Rendered rope length depends on player role without changing the full logical rope path.
 - A modular room transport experiment based on `BroadcastChannel`, validated gameplay snapshots, authority-owned route messages, and explicit interfaces. This is a foundation for local same-browser experiments; it is not internet multiplayer.
 - Lightweight synthesized interaction audio and restrained UI.
 
@@ -75,10 +84,10 @@ Reach is limited. Very widely spaced handholds can create an impossible route; a
 | --- | --- |
 | `src/core` | Shared data contracts, input, third-person camera and audio |
 | `src/player` | Character geometry/posing and exploration controller |
-| `src/climbing` | Reach planning, contact transitions, IK and quickdraws |
+| `src/climbing` | Mouse input, free-limb dynamics, contact/grip rules, continuous body pose and stability, IK, debug overlay and quickdraws |
 | `src/routes` | Route schema validation, persistence, defaults, rendering and editor |
 | `src/belay` | Belay actions, slack, catch and lowering state |
-| `src/rope` | Stable curved rope visualization through clipped protection |
+| `src/rope` | Full rope path state and role-dependent curved rope rendering |
 | `src/world` | Gym/outdoor factories, materials, terrain, props and instanced vegetation |
 | `src/assets` | Cached glTF loading |
 | `src/network` | Meaningful state snapshots and transport boundary |
@@ -89,6 +98,8 @@ Reach is limited. Very widely spaced handholds can create an impossible route; a
 World factories return a `World`: scene group, collision boxes, camera obstacles, climbable wall bounds, spawn points, protection positions and an optional update callback. They do not own climbing or route editing. Route coordinates use meters; the main contact wall is local XY with +Z pointing out toward the climber. Saved holds include unique ID, model/type, position, rotation, scale, color, start/finish flags and wall ID.
 
 The prototype uses Three.js, TypeScript, Vite, Vitest and Playwright. Static exploration collisions and a deterministic rope approximation keep this slice lightweight; Rapier is not currently required. An authoritative physics layer can be added behind the existing gameplay interfaces when moving beyond static worlds and local sessions.
+
+`ClimbInput` projects pointer intent onto the surface. `LimbTargetController` integrates damped free-limb motion and enforces anatomical limits. `BodyPoseSolver` constrains the body around planted contacts; `StabilitySolver` evaluates support and torque each frame. `ClimbingController` owns attachment, slipping and fall handoff. `ContactSolver` resolves actual contact surfaces and grip transforms. Rope presentation is selected independently through `RopeController.setView()`.
 
 ## Assets and Blender pipeline
 
@@ -112,7 +123,9 @@ Assets use meters, +Y up, and +Z outward. Hold and volume origins are at the wal
 
 - Local play is the primary experience. There is no hosted room service, remote account system, matchmaking or production network authority.
 - Belaying and falls are readable approximations. The rope is not a full collision-aware physical cable, and equipment is not a training model.
-- Limbs use procedural posing, not authored motion-capture animation. Extreme custom route spacing can exceed reach or produce awkward transitions.
+- Limbs use procedural posing, not authored motion-capture animation. Extreme custom route spacing can exceed reach or produce awkward transitions. Contact friction, balance and arm strain are tuned game approximations rather than a biomechanics simulation.
+- The continuous-control refactor was implemented without running tests, builds, linting, type checks or gameplay passes, as requested. Existing discrete-movement checks predate this interaction model and need revision in a future verification pass. Mouse sensitivity, settling speed, recovery timing and wrist alignment still need hands-on tuning.
+- Hold contact samples and simplified articulated fingers reuse the existing assets; there are no individually authored grip markers for every possible surface. Rope suppression crops a local curved strand rather than fading individual segments, and it does not yet use wall or camera collision.
 - Main custom route surfaces are planar. Neighboring gym slabs/overhangs and outdoor rock features establish the visual direction, but arbitrary curved route surfaces are future work.
 - Collision uses simple static volumes. Props are decorative and cannot yet be moved or physically manipulated.
 - Gym ownership, full decoration tools, progression, cosmetics, additional mountains and a deep fatigue model are outside this slice.
@@ -121,9 +134,9 @@ Assets use meters, +Y up, and +Z outward. Hold and volume origins are at the wal
 
 ## Recommended next steps
 
-1. Playtest the reach planner, foot placement, clipping cadence and behind-belayer camera with climbers and new players.
+1. In a separately authorized verification pass, update the previous discrete-movement checks and tune continuous mouse control, body response, correction windows and hand/foot alignment with climbers and new players.
 2. Add an authoritative room server and test actual two-person climb/belay ownership before expanding progression.
-3. Extend the wall surface contract to slabs and overhangs; give holds grip/reach metadata and build route difficulty feedback.
+3. Author playable slab/overhang routes against the existing surface-angle and friction contract; expand outdoor hand-grip zones and ledges.
 4. Refine the character rig and add authored motion accents for clipping, resting, chalking and rope handling.
 5. Introduce persistent gym layouts and a small furniture customization loop, then route browsing/sharing between friends.
 6. Add collision-aware rope contacts, more outdoor route choices, spatial ambience and an expanded lighting/animation polish pass.

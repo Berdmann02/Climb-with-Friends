@@ -46,12 +46,25 @@ async function holdKey(key, milliseconds) {
   await page.waitForTimeout(milliseconds);
   await page.keyboard.up(key);
 }
-async function advanceClimber(count) {
-  for (let i = 0; i < count; i++) {
-    const before = await snapshot();
-    const moved = await page.evaluate(() => window.__climbDebug.stepClimb());
-    assert.notEqual(moved, false, `Reach ${i + 1} should be accepted`);
-    await waitFor(s => s.currentHoldId !== before.currentHoldId, 'completed climbing contact', 20_000);
+const limbKeys={leftHand:'q',rightHand:'w',leftFoot:'a',rightFoot:'s'};
+async function manualMove(limb,point,expectedHold) {
+  const before=await snapshot();
+  await page.keyboard.press(limbKeys[limb]);
+  await waitFor(s=>s.selectedLimb===limb,'limb selection');
+  const screen=await project(...point);await page.mouse.click(screen.x,screen.y);
+  await waitFor(s=>s.phase==='prepare'||s.phase==='release'||s.phase==='moving','explicit move begins');
+  const during=await snapshot();
+  for(const other of Object.keys(limbKeys))if(other!==limb)assert.deepEqual(during.contacts[other].point,before.contacts[other].point,`${other} stays planted during ${limb} move`);
+  await waitFor(s=>s.climbing&&s.phase==='selected','explicit move settles');
+  const after=await snapshot();
+  if(expectedHold)assert.equal(after.contacts[limb].holdId,expectedHold,'Exact clicked hold is used');
+  for(const other of Object.keys(limbKeys))if(other!==limb)assert.deepEqual(after.contacts[other].point,before.contacts[other].point,`${other} does not auto-correct`);
+}
+// An authored playthrough fixture. No route planner or assistance exists in the game.
+const manualSequence=[['rightHand',4],['leftFoot',5],['rightFoot',1],['leftHand',6],['rightFoot',7],['leftFoot',0],['leftFoot',9],['rightHand',8],['rightFoot',4],['rightFoot',11],['leftHand',10],['leftFoot',6],['leftFoot',13],['rightHand',12],['rightFoot',8],['rightFoot',15],['leftHand',14],['leftFoot',10],['leftFoot',17],['rightHand',16],['rightFoot',12],['rightFoot',19],['leftHand',18],['leftFoot',14],['leftFoot',21],['rightHand',20],['rightFoot',16],['rightFoot',23],['leftHand',22]];
+async function playManualSequence(count=manualSequence.length){
+  for(const [limb,index] of manualSequence.slice(0,count)){
+    const hold=(await snapshot()).holdData[index];await manualMove(limb,hold.position,hold.id);
   }
 }
 async function storedRoute(name) {
@@ -164,41 +177,54 @@ try {
     await waitFor(s => s.holds === savedCount && s.routeName === routeName, 'reload persistence');
   });
 
-  await check('Climb the same edited route and reach its finish', async () => {
+  await check('Manual limb selection and removal of W-to-auto-climb', async () => {
     await page.locator('.editor-panel [data-action="test"]').click();
     await waitFor(s => s.climbing && !s.editor, 'test climb entry');
-    const before = await snapshot();
-    await holdKey('w', 220);
-    await waitFor(s => s.currentHoldId !== before.currentHoldId && s.player[1] > before.player[1] + .12, 'first player-directed reach');
-    for (let i = 0; i < 12 && !(await snapshot()).finished; i++) await advanceClimber(1);
-    assert.equal((await snapshot()).finished, true);
-    await shot('04-gym-climbing');
-    await page.locator('.session-panel [data-action="reset"]').click();
-    await waitFor(s => !s.climbing && s.player[1] < .1, 'ground reset');
+    await page.waitForTimeout(1000);
+    const before=await snapshot();
+    for(const [limb,key] of Object.entries(limbKeys)){
+      await page.keyboard.press(key);await waitFor(s=>s.selectedLimb===limb,`${key} selects ${limb}`);
+    }
+    await holdKey('w',1500);await holdKey('Space',400);
+    const after=await snapshot();
+    assert.equal(after.selectedLimb,'rightHand');assert.equal(after.debugVisible,false);
+    assert.deepEqual(after.contacts,before.contacts,'Keys alone never move a limb or solve the route');
+    assert.ok(Math.abs(after.player[1]-before.player[1])<.01,'No upward progress from holding W');
+    const far=after.holdData[10];const screen=await project(...far.position);await page.mouse.click(screen.x,screen.y);
+    await page.waitForTimeout(400);
+    assert.deepEqual((await snapshot()).contacts,before.contacts,'Impossible hand reach leaves all contacts unchanged');
   });
 
-  await check('Outdoor lead climb, protection clips, and visible rope', async () => {
+  await check('Manual smears, fixed supporting limbs and climbing the saved route',async()=>{
+    const before=await snapshot();
+    await manualMove('leftFoot',[-.22,.68,.012]);
+    assert.equal((await snapshot()).contacts.leftFoot.kind,'smear','Bare wall click establishes an explicit smear');
+    const foot=(await snapshot()).holdData[2];await manualMove('leftFoot',foot.position,foot.id);
+    await playManualSequence();
+    const after=await snapshot();
+    assert.equal(after.finished,true,'Explicit player limb choices reach the finish');
+    assert.ok(after.player[1]>before.player[1]+4,'Body follows player contacts upward');
+    assert.ok(['smear','hold'].includes(after.contacts.leftFoot.kind));
+    await shot('04-manual-climbing');
+    await page.locator('.session-panel [data-action="reset"]').click();
+    await waitFor(s=>!s.climbing&&s.player[1]<.1,'ground reset');
+  });
+
+  await check('Outdoor manual lead climb, protection clips and rope path',async()=>{
     await page.locator('.location-tabs [data-action="outdoor"]').click();
-    await waitFor(s => s.location === 'outdoor' && !s.menu, 'outdoor scene');
-    await page.waitForTimeout(900);
-    await shot('05-outdoor');
-    await page.locator('#context-button').click();
-    await waitFor(s => s.climbing, 'outdoor climb start');
-    for (let i = 0; i < 9; i++) {
-      await advanceClimber(1);
-      await page.keyboard.press('c');
-      await page.waitForTimeout(100);
-    }
-    const state = await snapshot();
-    assert.ok(state.clipped >= 1, 'At least one quickdraw clipped');
-    assert.equal(state.ropePoints, state.clipped + 2, 'Rope path passes through every clipped quickdraw');
-    await shot('06-outdoor-lead');
+    await waitFor(s=>s.location==='outdoor'&&!s.menu,'outdoor entry');await page.waitForTimeout(900);await shot('05-outdoor');
+    await page.locator('#context-button').click();await waitFor(s=>s.climbing,'outdoor attachment');await page.waitForTimeout(900);
+    await playManualSequence(11);await page.keyboard.press('c');
+    await waitFor(s=>s.clipped>=1,'explicit quickdraw clip');
+    assert.equal((await snapshot()).ropePoints,(await snapshot()).clipped+2,'Rope uses each clipped anchor');
+    await page.waitForTimeout(900);await shot('06-manual-lead');
   });
 
   await check('Switch roles, feed and take slack, brake and belayer framing', async () => {
     await page.keyboard.press('Tab');
     await waitFor(s => s.role === 'belayer', 'belayer role');
     await page.waitForTimeout(700);
+    const heldContacts=(await snapshot()).contacts;
     const before = (await snapshot()).slack;
     await holdKey('f', 550);
     const afterFeed = (await snapshot()).slack;
@@ -213,6 +239,7 @@ try {
     await page.mouse.move(1110, 480, { steps: 8 });
     await page.mouse.up({ button: 'right' });
     await page.waitForTimeout(700);
+    assert.deepEqual((await snapshot()).contacts,heldContacts,'Belayer role never auto-climbs for the player');
     await shot('07-belayer-view');
   });
 
@@ -225,7 +252,7 @@ try {
     await waitFor(s => s.role === 'belayer', 'belayer lowering role');
     await page.keyboard.down('l');
     await waitFor(s => s.belayState === 'lowering', 'lower control');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(300);
     await page.keyboard.up('l');
     await shot('08-catch-lowering');
   });

@@ -1,18 +1,46 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import type {HoldData,HoldType,RouteData} from '../core/contracts';
+import {registerHoldSurface,type HoldSurfaceMetadata,type SurfaceGrip} from '../climbing/ContactSolver';
 export class HoldRenderer {
   readonly group=new THREE.Group();
   private templates=new Map<HoldType,THREE.Group>();
   readonly meshes=new Map<string,THREE.Group>();
+  private surfaces=new Map<HoldType,HoldSurfaceMetadata>();
   private route:RouteData|null=null;
+  private fallbackGeometry=new THREE.SphereGeometry(1,16,10);
+  private boltGeometry=new THREE.CylinderGeometry(.018,.018,.018,8);
+  private boltMaterial=new THREE.MeshStandardMaterial({color:0x4c5150,metalness:.7,roughness:.35});
+  private markerGeometry=new THREE.PlaneGeometry(1,1);
+  private startMaterial=new THREE.MeshBasicMaterial({color:0xf7f4e9,side:THREE.DoubleSide});
+  private finishMaterial=new THREE.MeshBasicMaterial({color:0xffe8a4,side:THREE.DoubleSide});
   private ring=new THREE.Mesh(new THREE.TorusGeometry(.23,.014,6,32),new THREE.MeshBasicMaterial({color:0xfff5d4,depthTest:false}));
+  constructor(){this.ring.raycast=()=>{};}
   async load(){
     const loader=new GLTFLoader();
     await Promise.all((['jug','crimp','sloper','pinch','foothold'] as HoldType[]).map(async type=>{
-      try{const gltf=await loader.loadAsync(`/assets/hold-${type}.glb`);this.templates.set(type,gltf.scene);}catch{console.warn(`Using procedural ${type} hold fallback.`);}
+      try{
+        const gltf=await loader.loadAsync(`/assets/hold-${type}.glb`);this.templates.set(type,gltf.scene);
+        const surface=this.sampleSurface(gltf.scene,type);this.surfaces.set(type,surface);registerHoldSurface(`hold-${type}`,surface);
+      }catch{console.warn(`Using procedural ${type} hold fallback.`);}
     }));
     if(this.route)this.setRoute(this.route);
+  }
+  /** Samples the actual resin mesh before decorative bolts/tape are added. */
+  private sampleSurface(model:THREE.Group,type:HoldType):HoldSurfaceMetadata {
+    model.updateWorldMatrix(true,true);
+    const bounds=new THREE.Box3().setFromObject(model),ray=new THREE.Raycaster();
+    const sample=(height:number):SurfaceGrip=>{
+      const y=THREE.MathUtils.clamp(height,bounds.min.y+.01,bounds.max.y-.008);
+      ray.set(new THREE.Vector3(0,y,bounds.max.z+.25),new THREE.Vector3(0,0,-1));
+      const hit=ray.intersectObject(model,true)[0];
+      if(hit){
+        const normal=hit.face?hit.face.normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize():new THREE.Vector3(0,0,1);
+        return {point:hit.point.clone(),normal};
+      }
+      return {point:new THREE.Vector3(0,y,bounds.max.z),normal:new THREE.Vector3(0,0,1)};
+    };
+    return {hand:sample(type==='crimp'?.018:type==='pinch'?.015:.045),foot:sample(Math.max(.018,bounds.max.y*.65))};
   }
   setRoute(route:RouteData){
     this.route=route;
@@ -24,19 +52,24 @@ export class HoldRenderer {
   private makeHold(hold:HoldData){
     const mesh=this.templates.get(hold.type)?.clone(true)??new THREE.Group();
     if(mesh.children.length===0){
-      const fallback=new THREE.Mesh(new THREE.SphereGeometry(1,16,10),new THREE.MeshStandardMaterial());
+      const fallback=new THREE.Mesh(this.fallbackGeometry,this.boltMaterial);
       fallback.scale.set(hold.type==='foothold'?.12:.2,hold.type==='crimp'?.075:.14,.105);mesh.add(fallback);
     }
+    // Failed asset loads use their real procedural shape, whose depth differs
+    // from the authored GLB. Cache once in model space before route transforms.
+    let surface=this.surfaces.get(hold.type);
+    if(!surface){surface=this.sampleSurface(mesh,hold.type);this.surfaces.set(hold.type,surface);}
     mesh.traverse(o=>{if(o instanceof THREE.Mesh){const mat=new THREE.MeshStandardMaterial({color:hold.color,roughness:.87});o.material=mat;o.castShadow=true;o.receiveShadow=true;o.userData.holdId=hold.id;o.userData.ownedMaterial=true;}});
     mesh.position.fromArray(hold.position);mesh.rotation.z=hold.rotation;mesh.scale.setScalar(hold.scale);mesh.userData.holdId=hold.id;
-    const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.018,8),new THREE.MeshStandardMaterial({color:0x4c5150,metalness:.7,roughness:.35}));bolt.rotation.x=Math.PI/2;bolt.position.z=.12;mesh.add(bolt);
+    mesh.userData.contactSurface=surface;registerHoldSurface(hold.asset,surface);
+    const bolt=new THREE.Mesh(this.boltGeometry,this.boltMaterial);bolt.rotation.x=Math.PI/2;bolt.position.z=.12;bolt.userData.nonContact=true;bolt.raycast=()=>{};mesh.add(bolt);
     if(hold.start||hold.finish){
-      const tape=new THREE.Mesh(new THREE.PlaneGeometry(hold.finish?.18:.07,.16),new THREE.MeshBasicMaterial({color:hold.finish?0xffe8a4:0xf7f4e9,side:THREE.DoubleSide}));
-      tape.position.set(0,-.23,.005);mesh.add(tape);
+      const tape=new THREE.Mesh(this.markerGeometry,hold.finish?this.finishMaterial:this.startMaterial);
+      tape.scale.set(hold.finish?.18:.07,.16,1);tape.position.set(0,-.23,.005);tape.userData.nonContact=true;tape.raycast=()=>{};mesh.add(tape);
     }
     return mesh;
   }
+  updateTransform(hold:HoldData){const mesh=this.meshes.get(hold.id);if(mesh){mesh.position.fromArray(hold.position);mesh.rotation.z=hold.rotation;mesh.scale.setScalar(hold.scale);this.select(hold.id);}}
   select(id:string|null){const mesh=id?this.meshes.get(id):null;this.ring.visible=!!mesh;if(mesh)this.ring.position.copy(mesh.position).add(new THREE.Vector3(0,0,.24));}
-  highlight(ids:string[]){for(const [id,mesh] of this.meshes){mesh.traverse(o=>{if(o instanceof THREE.Mesh&&o.material instanceof THREE.MeshStandardMaterial){o.material.emissive.set(ids.includes(id)?0x39271b:0x000000);o.material.emissiveIntensity=.3;}});}}
   dispose(){this.setRoute({version:1,id:'dispose',name:'',creator:'',color:'#fff',holds:[],wallId:'',grade:'',createdAt:''});}
 }

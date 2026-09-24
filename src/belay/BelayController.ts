@@ -23,7 +23,14 @@ export class BelayController {
   get fallHeight(): number | null { return this.height; }
   get caught(): boolean { return this.hasCaught; }
 
-  setAction(action: BelayAction): void { this.currentAction = action; }
+  setAction(action: BelayAction): void {
+    if (this.currentState === 'lowering' && action !== 'lower' && this.height !== null) {
+      // Braking a lower holds the current rope length, not the original fall catch point.
+      this.catchTarget = this.height; this.catchTime = 0; this.hasCaught = true;
+      this.currentState = 'caught';
+    }
+    this.currentAction = action;
+  }
 
   beginFall(height: number, lastClipHeight: number): void {
     if (!Number.isFinite(height) || !Number.isFinite(lastClipHeight)) return;
@@ -59,7 +66,7 @@ export class BelayController {
       this.ropeTension += (0.12 - this.ropeTension) * Math.min(1, dt * 12);
       if (this.height <= this.catchTarget) {
         this.height = this.catchTarget; this.velocity = 0; this.hasCaught = true;
-        this.currentState = 'caught'; this.currentAction = 'lock'; this.ropeTension = 1;
+        this.currentState = 'caught'; this.currentAction = this.currentAction === 'lower' ? 'lower' : 'lock'; this.ropeTension = 1;
       }
       this.previousClimberHeight = climberHeight;
       return;

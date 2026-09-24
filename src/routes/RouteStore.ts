@@ -1,6 +1,8 @@
 import type { HoldData, HoldType, RouteData, WallSpec } from '../core/contracts';
+import type { GripType } from '../climbing/types';
 
 const HOLD_TYPES = new Set<HoldType>(['jug', 'crimp', 'sloper', 'pinch', 'foothold']);
+const GRIP_TYPES = new Set<GripType>(['jug', 'crimp', 'sloper', 'pinch', 'foothold', 'sidepull', 'undercling', 'pocket', 'edge']);
 const COLOR = /^#[0-9a-f]{6}$/i;
 const STORAGE_KEY = 'climb-with-friends.routes.v1';
 type StorageAdapter = Pick<Storage, 'getItem' | 'setItem'>;
@@ -38,6 +40,22 @@ export function validateRoute(data: unknown): RouteData {
     if (ids.has(id)) throw new Error(`Duplicate hold ID: ${id}`);
     ids.add(id);
     if (!HOLD_TYPES.has(hold.type as HoldType)) throw new Error(`Unknown hold type: ${String(hold.type)}`);
+    if (hold.grip !== undefined && !GRIP_TYPES.has(hold.grip as GripType)) throw new Error(`Unknown grip type: ${String(hold.grip)}`);
+    const metadata: Partial<HoldData> = {};
+    if (hold.grip !== undefined) metadata.grip = hold.grip as GripType;
+    for (const key of ['gripPoint', 'gripNormal', 'gripDirection'] as const) {
+      const value = hold[key];
+      if (value === undefined) continue;
+      if (!Array.isArray(value) || value.length !== 3) throw new Error(`${key} needs three coordinates.`);
+      const vector = value.map(n => number(n, key, -2, 2)) as [number, number, number];
+      if (key !== 'gripPoint' && Math.hypot(...vector) < .001) throw new Error(`${key} must not be a zero vector.`);
+      metadata[key] = vector;
+    }
+    for (const key of ['gripStrength', 'friction'] as const) if (hold[key] !== undefined) metadata[key] = number(hold[key], key, 0, 1);
+    for (const key of ['handAllowed', 'footAllowed'] as const) {
+      if (hold[key] !== undefined && typeof hold[key] !== 'boolean') throw new Error(`${key} must be a boolean.`);
+      if (hold[key] !== undefined) metadata[key] = hold[key] as boolean;
+    }
     if (!Array.isArray(hold.position) || hold.position.length !== 3) throw new Error('Hold position needs three coordinates.');
     if (hold.wallId !== wallId) throw new Error('All holds must belong to the route wall.');
     if (typeof hold.start !== 'boolean' || typeof hold.finish !== 'boolean') throw new Error('Hold start and finish flags must be booleans.');
@@ -46,7 +64,7 @@ export function validateRoute(data: unknown): RouteData {
       position: hold.position.map((n) => number(n, 'Hold coordinate', -1000, 1000)) as [number, number, number],
       rotation: number(hold.rotation, 'Hold rotation', -Math.PI * 200, Math.PI * 200),
       scale: number(hold.scale, 'Hold scale', 0.3, 2), color: color(hold.color, 'Hold color'),
-      start: hold.start, finish: hold.finish, wallId,
+      start: hold.start, finish: hold.finish, wallId, ...metadata,
     };
   });
   const createdAt = text(source.createdAt, 'Creation date', 40);
@@ -85,7 +103,7 @@ export class RouteStore {
   }
 
   private read(): Map<string, string> {
-    const records = new Map(RouteStore.fallback);
+    const records = new Map<string, string>();
     try {
       const raw = this.storage?.getItem(STORAGE_KEY);
       if (raw) {
@@ -96,6 +114,8 @@ export class RouteStore {
         }
       }
     } catch { this.storageAvailable = false; }
+    // Session edits are newer than persisted data when a write fails (for example quota).
+    for (const [id, json] of RouteStore.fallback) records.set(id, json);
     return records;
   }
 

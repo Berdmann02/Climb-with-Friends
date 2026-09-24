@@ -6,6 +6,7 @@ const MAX_ANCHORS = 48;
 const MAX_RINGS = (MAX_ANCHORS - 1) * RINGS_PER_SPAN + 1;
 const UP = new Vector3(0, 1, 0);
 const RIGHT = new Vector3(1, 0, 0);
+export type RopeView = 'full' | 'climber';
 
 /** Approximate catenary depth from extra rope length, kept bounded for visual stability. */
 export function ropeSag(distance: number, slack: number, tension: number): number {
@@ -76,7 +77,7 @@ class RopeTube {
     this.mesh.castShadow = false;
   }
 
-  update(points: Vector3[], slack: number, tension: number, time: number): void {
+  update(points: Vector3[], slack: number, tension: number, time: number, visibleTailLength: number | null = null): void {
     if (points.length < 2) { this.geometry.setDrawRange(0, 0); return; }
     if (points.length > MAX_ANCHORS) throw new Error(`Rope supports at most ${MAX_ANCHORS} constraint points.`);
     tension = Math.max(0, Math.min(1, tension));
@@ -89,6 +90,24 @@ class RopeTube {
       for (let ring = span === 0 ? 0 : 1; ring <= RINGS_PER_SPAN; ring++) {
         sampleRopeSegment(points[span], points[span + 1], Math.max(0, slack) * share, tension, ring / RINGS_PER_SPAN, time, this.point);
         this.point.toArray(this.centers, ringCount++ * 3);
+      }
+    }
+    if (visibleTailLength !== null) {
+      // Sample the complete constrained rope first. Cropping this sampled curve
+      // preserves its sag and anchor shape instead of inventing a new short rope.
+      let remaining = visibleTailLength;
+      for (let ring = ringCount - 1; ring > 0; ring--) {
+        this.before.fromArray(this.centers, (ring - 1) * 3);
+        this.after.fromArray(this.centers, ring * 3);
+        const length = this.before.distanceTo(this.after);
+        if (length > remaining && length > 1e-6) {
+          this.point.lerpVectors(this.before, this.after, 1 - remaining / length);
+          this.centers.copyWithin(3, ring * 3, ringCount * 3);
+          this.point.toArray(this.centers, 0);
+          ringCount = ringCount - ring + 1;
+          break;
+        }
+        remaining -= length;
       }
     }
     let textureDistance = 0;
@@ -132,11 +151,48 @@ export class RopeController {
   private material = ropeMaterial();
   private main = new RopeTube(this.material, 0.028);
   private brake = new RopeTube(this.material, 0.026);
+  private view: RopeView = 'full';
+  private physicalPath: Vector3[] = [];
+  private physicalBrakePath: Vector3[] = [];
+
+  /** Full ordered gameplay path is retained regardless of presentation mode. */
+  get physicalPoints(): readonly Vector3[] { return this.physicalPath; }
+  get brakePoints(): readonly Vector3[] { return this.physicalBrakePath; }
+  get presentation(): RopeView { return this.view; }
 
   constructor() { this.group.name = 'climbing-rope'; this.group.add(this.main.mesh, this.brake.mesh); }
-  update(_dt: number, points: Vector3[], slack: number, tension: number, time: number): void {
-    this.main.update(points, slack, tension, time);
+  setView(view: RopeView): void { this.view = view; this.brake.mesh.visible = view === 'full'; }
+
+  private copyPath(source: Vector3[], destination: Vector3[]): void {
+    for (let i = 0; i < source.length; i++) {
+      if (!destination[i]) destination[i] = new Vector3();
+      destination[i].copy(source[i]);
+    }
+    destination.length = source.length;
   }
-  updateBrake(points: Vector3[], time: number, slack = 0.1): void { this.brake.update(points, slack, 0.15, time); }
+
+  private localTailLength(points: Vector3[]): number {
+    let length = 3.2, alongPath = 0;
+    const harness = points[points.length - 1];
+    if (!harness) return length;
+    // Keep a nearby clipped draw and a small outgoing curve in frame. Index 0
+    // belongs to the belayer, so it never extends the local presentation window.
+    for (let i = points.length - 2; i >= 1; i--) {
+      alongPath += points[i + 1].distanceTo(points[i]);
+      if (alongPath > 4.8) break;
+      if (points[i].distanceTo(harness) <= 4.3) length = Math.max(length, Math.min(5, alongPath + .45));
+    }
+    return length;
+  }
+
+  update(_dt: number, points: Vector3[], slack: number, tension: number, time: number): void {
+    this.copyPath(points, this.physicalPath);
+    this.main.update(this.physicalPath, slack, tension, time, this.view === 'climber' ? this.localTailLength(this.physicalPath) : null);
+  }
+  updateBrake(points: Vector3[], time: number, slack = 0.1): void {
+    this.copyPath(points, this.physicalBrakePath);
+    this.brake.mesh.visible = this.view === 'full';
+    if (this.view === 'full') this.brake.update(this.physicalBrakePath, slack, 0.15, time);
+  }
   dispose(): void { this.main.dispose(); this.brake.dispose(); this.material.map?.dispose(); this.material.dispose(); }
 }
