@@ -41,6 +41,7 @@ export class Game {
     this.climbInput=new ClimbInput(this.renderer.domElement,this.camera,this.input);
     this.ui.onAction=a=>this.action(a);this.ui.onHold=t=>this.editor.choose(t);this.ui.onColor=c=>{this.route.color=c;this.editor.setColor(c);this.syncRouteUI();};
     this.ui.onLimb=limb=>{if(this.climb.active&&this.outdoor.role==='climber')this.climb.selectLimb(limb);};
+    this.climb.setAutoSequence(true);
     this.ui.onGrip=grip=>this.editor.mutate(h=>{h.grip=grip;});
     this.ui.onName=name=>{this.route.name=name;this.syncRouteUI();};this.ui.onMark=(k,v)=>this.editor.mark(k,v);this.ui.onScale=s=>this.editor.resize(s);this.ui.onLoad=id=>this.loadRoute(id);
     this.ui.el<HTMLInputElement>('route-file').addEventListener('change',e=>{const file=(e.target as HTMLInputElement).files?.[0];if(file)void this.importRoute(file);(e.target as HTMLInputElement).value='';});
@@ -165,8 +166,8 @@ export class Game {
     else if(this.outdoor.suspended)this.ui.context(this.outdoor.belay.caught?'Your partner has you.':'Easy does it.','Space to brake · L to lower · Switch roles with Tab','Lower gently','lower');
     else if(belaying)this.ui.context('You have the rope.','F feed · G take · Space brake · L lower · Partner holds position','Switch to climber','role');
     else if(this.climb.active&&this.climb.finished)this.ui.context('A little higher, together.','You reached the finish. Take in the view.',outdoor?'Lower to the ground':'Back to the lounge',outdoor?'lower':'reset');
-    else if(this.climb.active&&outdoor&&this.outdoor.canClip)this.ui.context('A good place to clip.','C clips the rope · Q/W hands · A/S feet · Mouse reaches · Click grips','Clip quickdraw','clip');
-    else if(this.climb.active)this.ui.context(this.climb.controlling?`${LIMB_LABELS[this.climb.selectedLimb]} · direct control`:'Your contacts are planted.','Q/W hands · A/S feet · Mouse reaches · Click grips','Back to the ground','reset');
+    else if(this.climb.active&&outdoor&&this.outdoor.canClip)this.ui.context('A good place to clip.','C clips the rope · Mouse reaches · Click grips · Arrows orbit','Clip quickdraw','clip');
+    else if(this.climb.active)this.ui.context(this.climb.controlling?`${LIMB_LABELS[this.climb.selectedLimb]}${this.climb.autoSequencing&&this.climb.suggestedLimb===this.climb.selectedLimb?' · chosen for you':' · direct control'}`:'Your contacts are planted.','Mouse reaches · Click grips · Arrows orbit · Wheel or -/= zooms','Back to the ground','reset');
     else this.ui.context(outdoor?'The long way home.':'Your next idea starts here.',outdoor?'E to climb · Tab to belay your partner':'WASD to wander · R to set a route · E to climb','Start climbing','climb');
     this.ui.el('objective').textContent=outdoor?'Seven clips, one rope, and a friend below. Follow the golden holds.':'A shared wall, a warm corner, and a route that could be yours.';
     this.ui.limbs(this.climb.active&&!belaying,this.climb.selectedLimb,this.climb.controlling);

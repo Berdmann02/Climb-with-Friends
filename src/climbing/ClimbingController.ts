@@ -5,6 +5,7 @@ import { createContact, getContactTarget, surfaceRight } from './ContactSolver';
 import { evaluateStability } from './StabilitySolver';
 import { ARM_REACH, LEG_REACH, bodyPoseAtRoot, constrainBodyRoot, contactJointTarget, solveBodyPose, solveContinuousBodyPose, surfaceOrientation } from './BodyPoseSolver';
 import { LimbTargetController } from './LimbTargetController';
+import { planNextLimb } from './NextLimbPlanner';
 import { LIMBS, isHand } from './types';
 import type { BodyPose, ClimbPhase, ClimbSurface, ContactRequest, LimbContact, LimbId, StabilityResult } from './types';
 
@@ -43,6 +44,8 @@ export class ClimbingController {
   private overreach = 0;
   private instability = 0;
   private slipping: { limb: LimbId; elapsed: number; distance: number } | null = null;
+  private autoSequence = false;
+  private suggested: LimbId | null = null;
 
   constructor(private readonly character: Character) {
     this.pose = bodyPoseAtRoot(this.contactSet, this.surface, new Vector3());
@@ -56,6 +59,9 @@ export class ClimbingController {
   get currentHoldId(): string | null { return this.lastHold; }
   get selectedLimb(): LimbId { return this.selected; }
   get phase(): ClimbPhase { return this.currentPhase; }
+  get suggestedLimb(): LimbId | null { return this.suggested; }
+  get autoSequencing(): boolean { return this.autoSequence; }
+  setAutoSequence(on: boolean): void { this.autoSequence = on; if (!on) this.suggested = null; }
   get contacts(): Contacts { return this.contactSet; }
   get body(): BodyPose { return this.pose; }
   get stability(): StabilityResult { return this.balance; }
@@ -68,7 +74,7 @@ export class ClimbingController {
   stop(): void {
     this.running = false; this.complete = false; this.fell = false; this.controlled = false;
     this.currentPhase = 'idle'; this.instability = 0; this.slipping = null; this.desiredRequest = null; this.desiredTarget = null;
-    this.rootVelocity.set(0, 0, 0); this.limbs.reset(); this.overreach = 0;
+    this.rootVelocity.set(0, 0, 0); this.limbs.reset(); this.overreach = 0; this.suggested = null;
     this.character.setClimbingVisual(null);
   }
 
@@ -115,6 +121,12 @@ export class ClimbingController {
   }
 
 
+  /** Auto-sequencing: pick the limb whose move the body is asking for, and take control of it. */
+  private advanceSequence(justMoved: LimbId | null): void {
+    this.suggested = planNextLimb(this.contactSet, this.pose, this.surface, this.balance, justMoved);
+    if (this.suggested) this.selectLimb(this.suggested); else this.syncVisual();
+  }
+
   selectLimb(limb: LimbId): void {
     if (!this.running || !LIMBS.includes(limb)) return;
     if (this.controlled) {
@@ -157,6 +169,9 @@ export class ClimbingController {
     if (this.slipping?.limb === this.selected) { this.slipping = null; this.instability = Math.max(0, this.instability - 1.5); }
     this.complete = isHand(this.selected) && !!this.route?.holds.some(h => h.finish && h.id === contact.holdId);
     this.refreshStability(); this.recoverSupport(); this.syncVisual();
+    // The machine picks which limb moves next; the player still aims and grips it.
+    if (this.autoSequence && !this.complete) this.advanceSequence(this.selected);
+    else this.syncVisual();
     return { accepted: true };
   }
 

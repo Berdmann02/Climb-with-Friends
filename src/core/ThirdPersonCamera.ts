@@ -8,9 +8,11 @@ export class ThirdPersonCamera {
   reset(outdoor:boolean){this.yaw=outdoor?.2:.28;this.pitch=.28;this.distance=outdoor?8.8:8;}
   update(dt:number,mode:CameraMode,player:Vector3,climber:Vector3,obstacles:Object3D[],outdoor:boolean){
     if(mode!=='editor'&&mode!=='menu'){
-      this.yaw-=this.input.deltaX*.004;
-      this.pitch=MathUtils.clamp(this.pitch+this.input.deltaY*.003,-.35,1.15);
-      this.distance=MathUtils.clamp(this.distance+this.input.zoom*.55,4.5,13);
+      // Keyboard orbit keeps the mouse free for climbing aim; drag still orbits.
+      const held=(a:string,b:string)=>(this.input.down(a)?1:0)-(this.input.down(b)?1:0);
+      this.yaw-=this.input.deltaX*.004+held('ArrowRight','ArrowLeft')*dt*1.7;
+      this.pitch=MathUtils.clamp(this.pitch+this.input.deltaY*.003+held('ArrowDown','ArrowUp')*dt*1.1,-.35,1.15);
+      this.distance=MathUtils.clamp(this.distance+this.input.zoom*.55+held('Minus','Equal')*dt*5.5,4.5,13);
     }
     let focus=player.clone().add(new Vector3(0,1.2,0));let desired=new Vector3();
     if(mode==='menu'){
