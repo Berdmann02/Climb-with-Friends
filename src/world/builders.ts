@@ -13,9 +13,9 @@ export function lineTube(parent:THREE.Object3D, points:THREE.Vector3[], radius:n
 }
 export function sign(parent:THREE.Object3D,title:string,subtitle:string,width:number,height:number,at:[number,number,number], options:{background?:string;color?:string;fontSize?:number}={}):THREE.Mesh {
   const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=Math.round(1024*height/width);
-  const ctx=canvas.getContext('2d')!;ctx.fillStyle=options.background??'#385448';ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle=options.color??'#f4ebd7';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`500 ${options.fontSize??Math.min(105,canvas.height*.28)}px Georgia`;ctx.fillText(title,512,canvas.height*(subtitle?.40:.5),960);
-  if(subtitle){ctx.font=`500 ${Math.min(33,canvas.height*.11)}px sans-serif`;ctx.fillText(subtitle.toUpperCase(),512,canvas.height*.72,920);}
+  const ctx=canvas.getContext('2d')!;ctx.fillStyle=options.background??'#795638';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle=options.color??'#fff0cb';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`400 ${options.fontSize??Math.min(105,canvas.height*.28)}px Anton`;ctx.fillText(title.toUpperCase(),512,canvas.height*(subtitle?.40:.5),960);
+  if(subtitle){ctx.font=`500 ${Math.min(33,canvas.height*.11)}px 'Nunito Sans'`;ctx.fillText(subtitle.toUpperCase(),512,canvas.height*.72,920);}
   const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;
   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(width,height),new THREE.MeshStandardMaterial({map,roughness:.8}));mesh.position.set(...at);parent.add(mesh);return mesh;
 }

@@ -91,7 +91,7 @@ export class Game {
       case 'import':this.ui.el<HTMLInputElement>('route-file').click();break;
       case 'help':this.input.clear();this.ui.help();break;
       case 'pause':{this.paused=!this.paused;this.input.clear();const d=this.ui.el<HTMLDialogElement>('pause-dialog');if(this.paused)d.showModal();else d.close();break;}
-      case 'audio':this.audio.muted=!this.audio.muted;this.ui.toast(this.audio.muted?'Sound off. A quiet moment.':'Sound on.');break;
+      case 'audio':this.audio.muted=!this.audio.muted;this.ui.root.querySelector('[data-action=audio]')?.setAttribute('aria-pressed',String(!this.audio.muted));this.ui.toast(this.audio.muted?'Sound off. A quiet moment.':'Sound on.');break;
       case 'wallColor':this.wallMood=(this.wallMood+1)%3;this.world.group.traverse(o=>{if(o instanceof THREE.Mesh&&o.geometry instanceof THREE.BoxGeometry&&o.position.z===-.10&&o.position.x>=-5&&o.position.x<=5){const mat=o.material as THREE.MeshStandardMaterial;mat.color.set(['#e0cfad','#a9b7a2','#c5ada0'][this.wallMood]);}});this.ui.toast(['Warm plywood','Sage afternoon','Rose clay'][this.wallMood]);break;
       case 'look':break;
     }
