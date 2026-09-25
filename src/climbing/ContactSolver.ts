@@ -33,11 +33,11 @@ export function gripForHold(hold: HoldData): GripMetadata {
   let rotation = hold.rotation;
   // Explicit gear metadata remains useful on an unrotated authored asset.
   if (explicit === 'undercling' && angle < .25) rotation = Math.PI;
-  if (explicit === 'sidepull' && angle < .25) rotation = Math.PI / 2;
+  if (explicit === 'sidepull' && angle < .25) rotation = (hold.gripDirection?.[0]??1)<0?-Math.PI/2:Math.PI/2;
   const direction = hold.gripDirection ? new Vector3(...hold.gripDirection).normalize() : new Vector3(0, -1, 0);
   return {
     grip, rotation, strength: hold.gripStrength ?? STRENGTH[grip], friction: hold.friction ?? (grip === 'sloper' ? .68 : grip === 'crimp' || grip === 'edge' ? .78 : .9),
-    direction: direction.applyAxisAngle(LOCAL_NORMAL, rotation),
+    direction: direction.applyAxisAngle(LOCAL_NORMAL, hold.gripDirection?hold.rotation:rotation),
   };
 }
 

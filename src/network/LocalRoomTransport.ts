@@ -7,7 +7,7 @@ export interface PlayerSnapshot {
   playerId: string;
   scene: LocationId;
   role: 'climber' | 'belayer' | 'visitor';
-  state: 'idle' | 'walk' | 'jog' | 'climb' | 'fall' | 'belay';
+  state: 'idle' | 'walk' | 'jog' | 'climb' | 'fall' | 'belay' | 'hang' | 'land';
   position: [number, number, number];
   rotation: number;
   activeHoldId: string | null;
@@ -39,7 +39,7 @@ export function validateSnapshot(value: unknown): PlayerSnapshot {
   const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 120;
   if (!id(snapshot.playerId) || !['gym', 'outdoor'].includes(String(snapshot.scene))
     || !['climber', 'belayer', 'visitor'].includes(String(snapshot.role))
-    || !['idle', 'walk', 'jog', 'climb', 'fall', 'belay'].includes(String(snapshot.state))
+    || !['idle', 'walk', 'jog', 'climb', 'fall', 'belay', 'hang', 'land'].includes(String(snapshot.state))
     || !Array.isArray(snapshot.position) || snapshot.position.length !== 3 || !snapshot.position.every((n) => finite(n, -2000, 2000))
     || !finite(snapshot.rotation, -1000, 1000)
     || !(snapshot.activeHoldId === null || id(snapshot.activeHoldId))

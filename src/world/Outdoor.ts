@@ -16,6 +16,10 @@ export async function createOutdoor():Promise<World> {
   const trail=new THREE.Mesh(new THREE.PlaneGeometry(5,31),surface('#c4b99b','earth'));trail.rotation.x=-Math.PI/2;trail.position.set(0,-.07,13);trail.rotation.z=-.14;group.add(trail);
   const base=new THREE.Mesh(new THREE.CircleGeometry(8,24),surface('#c1b697','earth'));base.rotation.x=-Math.PI/2;base.position.set(0,-.065,2);base.scale.set(1,.69,1);group.add(base);
   const cliff=graniteFace();group.add(cliff);cameraObstacles.push(cliff);
+  // Permanent lower-off hardware is used only after the lead route's matched finish.
+  const metal=surface('#9daba4',undefined,.28);
+  for(const x of [-.14,.14]){const bolt=new THREE.Mesh(new THREE.TorusGeometry(.035,.011,6,12),metal);bolt.position.set(x,22.55,.14);group.add(bolt);lineTube(group,[new THREE.Vector3(x,22.55,.14),new THREE.Vector3(0,22.28,.23)],.008,metal);}
+  const lowerRing=new THREE.Mesh(new THREE.TorusGeometry(.075,.014,7,16),metal);lowerRing.position.set(0,22.24,.24);group.add(lowerRing);
   colliders.push(new THREE.Box3(new THREE.Vector3(-13,-1,-7),new THREE.Vector3(13,28,-.12)));
   // Side buttresses provide real thickness and a split granite silhouette.
   const rock=await loadAsset('granite-boulder');
@@ -25,7 +29,7 @@ export async function createOutdoor():Promise<World> {
   }
   boulder(-10,-1,-4,5.6,16,4.0);boulder(9.5,-1,-5,5.1,18,4.8);boulder(-4,-2,-7,8,18,5);boulder(4,-1,-9,7,17,7);
   for(let i=0;i<19;i++){const side=i%2?-1:1,x=side*(5.4+random()*9),z=random()*16-1;boulder(x,-.15,z,.3+random()*1.3,.3+random()*.65,.3+random(),true);}
-  // Sparse fine cracks and ledges suggest climbable granite without hiding holds.
+  // Sparse fine cracks and ledges suggest climbable granite with the natural contact features.
   const seam=surface('#696f67','stone');
   for(let i=0;i<11;i++) {
     const x=-10+i*1.91,points:THREE.Vector3[]=[];for(let j=0;j<7;j++)points.push(new THREE.Vector3(x+Math.sin(j*1.15+i)*.17,2+j*3.5,-.095));
@@ -59,5 +63,5 @@ export async function createOutdoor():Promise<World> {
   const fill=new THREE.DirectionalLight('#cadfdb',.65);fill.position.set(18,15,-10);group.add(fill);
   colliders.push(new THREE.Box3(new THREE.Vector3(-42,-1,-20),new THREE.Vector3(-40,5,50)),new THREE.Box3(new THREE.Vector3(40,-1,-20),new THREE.Vector3(42,5,50)),new THREE.Box3(new THREE.Vector3(-42,-1,49),new THREE.Vector3(42,5,51)));
   group.userData.background='#cbded5';group.userData.fog={color:'#cbded5',near:45,far:150};
-  return {group,colliders,cameraObstacles,wall:{id:'outdoor-main',minX:-3,maxX:3,minY:.3,maxY:23,z:0},spawn:new THREE.Vector3(-1,0,8),belayPosition:new THREE.Vector3(.8,0,6),protection:Array.from({length:7},(_,i)=>new THREE.Vector3(i%2?.5:-.5,(i+1)*3,.35)),update:(dt,time)=>{clouds.position.x=Math.sin(time*.008)*2;dust.rotation.y=time*.004;}};
+  return {group,colliders,cameraObstacles,wall:{id:'outdoor-main',minX:-3,maxX:3,minY:.3,maxY:23,z:-.4,routeType:'LEAD',material:'rock',friction:.88,topAnchor:[0,22.24,.24]},spawn:new THREE.Vector3(-1,0,8),belayPosition:new THREE.Vector3(.8,0,6),protection:Array.from({length:7},(_,i)=>new THREE.Vector3(i%2?.5:-.5,(i+1)*3,.35)),update:(dt,time)=>{clouds.position.x=Math.sin(time*.008)*2;dust.rotation.y=time*.004;}};
 }

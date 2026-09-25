@@ -53,7 +53,7 @@ export class ClimbInput {
       if(id){const hold=route.holds.find(h=>h.id===id);if(hold)return {point:first.point.clone(),normal,hold,surfaceHit:true};}
       const wall=world.wall;
       const onWall=first.point.x>=wall.minX&&first.point.x<=wall.maxX&&first.point.y>=wall.minY&&first.point.y<=wall.maxY
-        &&Math.abs(first.point.clone().sub(surface.origin).dot(surface.normal))<.25&&normal.dot(surface.normal)>.45;
+        &&Math.abs(first.point.clone().sub(surface.origin).dot(surface.normal))<(surface.material==='rock'?.8:.25)&&normal.dot(surface.normal)>(surface.material==='rock'?.2:.45);
       if(onWall)return {point:first.point.clone(),normal,surfaceHit:true};
       // An actual foreground object blocks grabbing anything behind it.
       if(!allowWallProjection)return null;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { World } from '../core/contracts';
+import type { World, WallSpec } from '../core/contracts';
 import { loadAsset } from '../assets/AssetLibrary';
 import { box, cylinder, sign, collision, lineTube } from './builders';
 import { colors, surface, seeded } from './materials';
@@ -45,6 +45,12 @@ export async function createGym():Promise<World> {
   box(group,[23.9,.13,.15],[0,.005,5.90],padEdge,.02);
   sign(group,'THE HEARTH','A little higher, together.',5.4,.80,[0,8.85,.08],{background:'#d7c6a6',color:'#385248',fontSize:97});
   sign(group,'01   /   your next idea','Set a line. Give it a name. Make it yours.',3.5,.50,[-3.05,7.35,.015],{background:'#ccc0a4',color:'#4f6358',fontSize:75});
+  // Two real activity lanes on the existing plywood face.
+  sign(group,'BOULDER','02',1.55,.30,[-3.25,4.15,.025],{background:'#b8bda3',color:'#385248'});
+  box(group,[3.9,.08,.12],[-3.1,3.98,.02],wood);
+  sign(group,'TOP ROPE','01',1.5,.30,[1.7,7.45,.025],{background:'#ccc0a4',color:'#4f6358'});
+  const anchor=new THREE.Mesh(new THREE.TorusGeometry(.09,.021,8,16),surface('#90988e',undefined,.24));anchor.position.set(1.7,7.9,.25);group.add(anchor);
+  box(group,[.18,.26,.07],[1.7,7.9,.05],surface('#9b9d90',undefined,.35));
   // Tall side windows with warm framing; mountains and trees beyond the glass.
   const windowMat=new THREE.MeshBasicMaterial({color:'#b7d8d5',transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false});
   for(const side of [-1,1]) {
@@ -77,6 +83,17 @@ export async function createGym():Promise<World> {
   fixed(bench(group,-8.8,8.15));fixed(bench(group,-8.8,12.2));
   for(const [x,z,s] of [[11.1,8.0,1.2],[5.6,15.5,1.1],[-11.1,15.9,1.5],[-5.6,7.0,.9],[10.7,17.0,1.0]]) plant(group,x,z,s);
   backpack(group,-10,8.9);backpack(group,10,14.9,'#718891');bottle(group,-8.6,.64,8.2,'#c29765');ropeCoil(group,-7.1,10.3);
+  // Reception faces the entrance; the tablet is the physical wall-mood control.
+  const reception=new THREE.Group();reception.position.set(3.0,0,17.55);group.add(reception);
+  box(reception,[3.0,1.0,.85],[0,.50,0],wood,.035);
+  box(reception,[3.22,.11,1.05],[0,1.05,0],beam,.035);
+  for(let x=-1.35;x<1.5;x+=.18)box(reception,[.027,.78,.026],[x,.52,.439],beam);
+  sign(reception,'THE HEARTH','RECEPTION',1.65,.36,[0,.64,.46],{background:'#c7baa0',color:'#385248'});
+  const tablet=box(reception,[.40,.25,.035],[-.62,1.23,.18],surface('#42554c'),.018);tablet.rotation.x=-.25;
+  const screen=box(reception,[.34,.18,.009],[-.62,1.23,.203],surface('#b8c4a6'));screen.rotation.x=-.25;
+  box(reception,[.38,.012,.30],[.12,1.113,.1],surface('#ebe1c9'));
+  cylinder(reception,.09,.07,.12,[.72,1.17,.12],surface('#b3ac91'));bottle(reception,1.1,1.11,-.1,'#84988b');
+  plant(group,4.7,17.5,.65);fixed(reception);
   // A freestanding community board and route-setting cart.
   const board=new THREE.Group();board.position.set(-6.1,0,15.4);group.add(board);for(const x of [-.68,.68])box(board,[.07,2.6,.08],[x,1.3,0],beam);
   box(board,[1.6,1.75,.10],[0,1.7,0],wood,.025);sign(board,'On the board','NEW ROUTES • GOOD COMPANY',1.48,.6,[0,2.16,.06]);
@@ -87,7 +104,7 @@ export async function createGym():Promise<World> {
   box(cart,[.54,.05,.45],[0,.25,0],sage);box(cart,[.3,.17,.22],[0,.86,0],surface('#c99757'),.025);
   // Fixed rope lanes frame the customizable wall without crossing its routes.
   const ropeMat=surface('#d9ae70','fabric');
-  for(const x of [-4.65,4.65]) {
+  for(const x of [4.65]) {
     lineTube(group,[new THREE.Vector3(x,.15,.45),new THREE.Vector3(x,4,.17),new THREE.Vector3(x,7.85,.24),new THREE.Vector3(x+.25,4.2,.34),new THREE.Vector3(x+.36,.18,.62)],.016,ropeMat);
     const ring=new THREE.Mesh(new THREE.TorusGeometry(.085,.02,6,12),surface('#90988e',undefined,.24));ring.position.set(x,7.85,.17);group.add(ring);
   }
@@ -97,5 +114,9 @@ export async function createGym():Promise<World> {
   // Invisible broad collision edges keep exploration within the architectural room.
   colliders.push(new THREE.Box3(new THREE.Vector3(-13,-1,20),new THREE.Vector3(13,4,21)));
   group.userData.background='#d8e2d5';group.userData.fog={color:'#d8e2d5',near:38,far:90};
-  return {group,colliders,cameraObstacles,wall:{id:'gym-main',minX:-5,maxX:5,minY:.3,maxY:7.6,z:0},spawn:new THREE.Vector3(0,0,8),belayPosition:new THREE.Vector3(.8,0,6),protection:[]};
+  const walls:WallSpec[]=[
+    {id:'gym-main',minX:-1.1,maxX:5,minY:.3,maxY:7.6,z:0,routeType:'TOP_ROPE',topAnchor:[1.7,7.9,.25]},
+    {id:'gym-boulder',minX:-5,maxX:-1.5,minY:.3,maxY:3.7,z:0,routeType:'BOULDER'},
+  ];
+  return {group,colliders,cameraObstacles,wall:walls[0],walls,frontDesk:new THREE.Vector3(3,0,18.55),spawn:new THREE.Vector3(0,0,17),belayPosition:new THREE.Vector3(2.5,0,4),protection:[]};
 }

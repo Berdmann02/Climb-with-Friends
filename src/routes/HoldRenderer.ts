@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import type {HoldData,HoldType,RouteData} from '../core/contracts';
 import {registerHoldSurface,type HoldSurfaceMetadata,type SurfaceGrip} from '../climbing/ContactSolver';
+import {NaturalRockFeatures} from '../world/NaturalRockFeatures';
 export class HoldRenderer {
   readonly group=new THREE.Group();
   private templates=new Map<HoldType,THREE.Group>();
   readonly meshes=new Map<string,THREE.Group>();
   private surfaces=new Map<HoldType,HoldSurfaceMetadata>();
   private route:RouteData|null=null;
+  private companions:RouteData[]=[];
+  private natural=new NaturalRockFeatures();
   private fallbackGeometry=new THREE.SphereGeometry(1,16,10);
   private boltGeometry=new THREE.CylinderGeometry(.018,.018,.018,8);
   private boltMaterial=new THREE.MeshStandardMaterial({color:0x4c5150,metalness:.7,roughness:.35});
@@ -46,10 +49,18 @@ export class HoldRenderer {
     this.route=route;
     for(const mesh of this.meshes.values())mesh.traverse(o=>{if(o instanceof THREE.Mesh && o.userData.ownedMaterial)(o.material as THREE.Material).dispose();});
     this.group.clear();this.meshes.clear();
-    for(const hold of route.holds){const mesh=this.makeHold(hold);this.group.add(mesh);this.meshes.set(hold.id,mesh);}
+    for(const shown of [route,...this.companions.filter(r=>r.wallId!==route.wallId)])for(const hold of shown.holds){const mesh=this.makeHold(hold);this.group.add(mesh);this.meshes.set(hold.id,mesh);}
     this.ring.visible=false;this.group.add(this.ring);
   }
+  setCompanionRoutes(routes:RouteData[]){this.companions=routes;}
   private makeHold(hold:HoldData){
+    if(hold.wallId.startsWith('outdoor')){
+      const mesh=this.natural.make(hold);
+      const sampled=this.sampleSurface(mesh,hold.type);registerHoldSurface(hold.asset,sampled);
+      mesh.traverse(o=>{if(o instanceof THREE.Mesh&&!o.userData.nonContact)o.userData.holdId=hold.id;});
+      mesh.position.fromArray(hold.position);mesh.rotation.z=hold.rotation;mesh.scale.setScalar(hold.scale);mesh.userData.holdId=hold.id;
+      return mesh;
+    }
     const mesh=this.templates.get(hold.type)?.clone(true)??new THREE.Group();
     if(mesh.children.length===0){
       const fallback=new THREE.Mesh(this.fallbackGeometry,this.boltMaterial);
@@ -71,5 +82,5 @@ export class HoldRenderer {
   }
   updateTransform(hold:HoldData){const mesh=this.meshes.get(hold.id);if(mesh){mesh.position.fromArray(hold.position);mesh.rotation.z=hold.rotation;mesh.scale.setScalar(hold.scale);this.select(hold.id);}}
   select(id:string|null){const mesh=id?this.meshes.get(id):null;this.ring.visible=!!mesh;if(mesh)this.ring.position.copy(mesh.position).add(new THREE.Vector3(0,0,.24));}
-  dispose(){this.setRoute({version:1,id:'dispose',name:'',creator:'',color:'#fff',holds:[],wallId:'',grade:'',createdAt:''});}
+  dispose(){this.companions=[];this.setRoute({version:1,id:'dispose',name:'',creator:'',color:'#fff',holds:[],wallId:'',routeType:'TOP_ROPE',grade:'',createdAt:''});}
 }

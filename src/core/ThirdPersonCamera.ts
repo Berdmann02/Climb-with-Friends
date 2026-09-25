@@ -3,6 +3,8 @@ import type {Input} from './Input';
 export type CameraMode='explore'|'climb'|'belay'|'editor'|'menu';
 export class ThirdPersonCamera {
   yaw=0.22; pitch=.3; distance=7.8;
+  readonly editorFocus=new Vector3(1,4.1,0);
+  editorDistance=12.5;
   private target=new Vector3(); private ray=new Raycaster();
   constructor(public camera:PerspectiveCamera,private input:Input){}
   reset(outdoor:boolean){this.yaw=outdoor?.2:.28;this.pitch=.28;this.distance=outdoor?8.8:8;}
@@ -19,7 +21,7 @@ export class ThirdPersonCamera {
       focus.set(outdoor?0:-1,outdoor?10:3.1,0);
       desired.set(outdoor?15:11,outdoor?8.5:6.5,outdoor?27:18);
     }else if(mode==='editor'){
-      focus.set(1,4.1,0);desired.set(1,4.1,12.5);
+      focus.copy(this.editorFocus);desired.copy(focus).add(new Vector3(0,0,this.editorDistance));
     }else if(mode==='belay'){
       // Eye stays behind the belayer; looking up never orbits in front of the rope handler.
       const az=MathUtils.clamp(this.yaw,-.65,.65);

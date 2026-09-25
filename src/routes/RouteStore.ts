@@ -1,4 +1,5 @@
 import type { HoldData, HoldType, RouteData, WallSpec } from '../core/contracts';
+import {routeTypeForWall} from './RouteMode';
 import type { GripType } from '../climbing/types';
 
 const HOLD_TYPES = new Set<HoldType>(['jug', 'crimp', 'sloper', 'pinch', 'foothold']);
@@ -32,6 +33,8 @@ export function validateRoute(data: unknown): RouteData {
   const source = object(data, 'Route');
   if (source.version !== 1) throw new Error('Unsupported route version. Expected version 1.');
   const wallId = text(source.wallId, 'Wall ID');
+  const routeType=source.routeType??routeTypeForWall(wallId);
+  if(!['BOULDER','TOP_ROPE','LEAD'].includes(String(routeType))||routeType!==routeTypeForWall(wallId))throw new Error('This climbing mode does not belong on this wall.');
   if (!Array.isArray(source.holds) || source.holds.length > 600) throw new Error('A route must have an array of at most 600 holds.');
   const ids = new Set<string>();
   const holds = source.holds.map((value, index): HoldData => {
@@ -67,11 +70,12 @@ export function validateRoute(data: unknown): RouteData {
       start: hold.start, finish: hold.finish, wallId, ...metadata,
     };
   });
+  if(holds.filter(h=>h.finish).length>1)throw new Error('A route has one designated finish hold.');
   const createdAt = text(source.createdAt, 'Creation date', 40);
   if (!Number.isFinite(Date.parse(createdAt))) throw new Error('Creation date must be a valid date.');
   return {
     version: 1, id: text(source.id, 'Route ID'), name: text(source.name, 'Route name', 80),
-    creator: text(source.creator, 'Creator', 80), color: color(source.color, 'Route color'), holds, wallId,
+    creator: text(source.creator, 'Creator', 80), color: color(source.color, 'Route color'), holds, wallId, routeType:routeTypeForWall(wallId),
     grade: typeof source.grade === 'string' && source.grade.length <= 30 ? source.grade : '', createdAt,
   };
 }

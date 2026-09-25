@@ -239,3 +239,25 @@ dialog>p{font-size:12px;color:var(--muted);line-height:1.7}
   .location-tabs{position:static}.editor-panel{top:85px;max-height:calc(100dvh - 190px)}.context-action{margin-bottom:12px;padding:10px 14px}.context-action small{display:none}.toast{top:79px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Gameplay has only contact selection and height; actions belong to physical places. */
+.climbing-mode .topbar{display:none}
+.climbing-hud{position:absolute;right:28px;bottom:30px;display:flex;flex-direction:column;align-items:center;gap:12px;pointer-events:none}
+#climb-height{font:600 18px var(--label);letter-spacing:1px;color:var(--cream);text-shadow:0 1px 6px #342a21,0 2px 12px #342a2177}
+.limb-wheel{position:relative;width:112px;height:112px;border-radius:50%;border:1px solid #f5e6c757;background:#453b2a30;backdrop-filter:blur(3px);display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:10px}
+.limb-wheel button{pointer-events:auto;display:grid;place-items:center;width:37px;height:37px;border-radius:50%;border:1px solid #fff0d153;background:#f2e4cbb8;color:#5e594b;transition:transform .12s,background .12s;box-shadow:none}
+.limb-wheel button kbd{background:none;border:0;font:600 17px var(--body);padding:0;color:inherit}
+.limb-wheel button.active{background:#f6dda4;color:#51452f;transform:scale(1.11);border-color:#fff0d1}
+.wheel-center{position:absolute;left:calc(50% - 2px);top:calc(50% - 2px);width:4px;height:4px;border-radius:50%;background:#f3e4c680}
+.interaction-prompt{position:absolute;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:22px;align-items:center;padding:9px 14px;border-radius:6px;background:#443b2ac7;color:#f6ebd6;backdrop-filter:blur(5px);font-size:12px;white-space:nowrap;pointer-events:none}
+.interaction-prompt>span{display:flex;gap:9px;align-items:center}
+.interaction-prompt kbd{font-size:11px;color:#f6ebd6;border-color:#dfd0b65c;background:#ffffff12}
+#interface>.belay-actions{position:absolute;bottom:92px;left:50%;transform:translateX(-50%);display:flex;gap:8px;pointer-events:auto}
+#interface>.belay-actions button{padding:9px 12px;border-radius:5px;background:#ebdec8de;font-size:12px}
+#interface>.belay-actions button.active{background:#c89460}
+#mood-dialog{max-width:365px;padding:28px}
+#mood-dialog h2{font-size:28px}
+.mood-presets{display:grid;gap:12px;margin-top:24px}
+.mood-presets button{padding:14px 16px;text-align:left;border:1px solid var(--line);border-radius:5px;background:#e0cfad}
+.mood-presets button:nth-child(2){background:#a9b7a2}.mood-presets button:nth-child(3){background:#c5ada0}
+@media(max-width:700px){.climbing-hud{right:16px;bottom:18px}.limb-wheel{width:102px;height:102px;padding:8px;gap:8px}.interaction-prompt{bottom:28px;font-size:11px;gap:14px}}

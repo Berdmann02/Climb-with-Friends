@@ -3,7 +3,7 @@ import type { PoseTargets } from '../core/contracts';
 import type { ClimbingVisual, GripType, LimbId } from '../climbing/types';
 import { solveTwoBone } from '../climbing/ik';
 
-export type CharacterState = 'idle' | 'walk' | 'jog' | 'climb' | 'fall' | 'belay';
+export type CharacterState = 'idle' | 'walk' | 'jog' | 'climb' | 'fall' | 'belay' | 'hang' | 'land';
 type Finger = { upper:THREE.Mesh; lower:THREE.Mesh; pad:THREE.Mesh };
 type Limb = { upper: THREE.Mesh; lower: THREE.Mesh; joint: THREE.Mesh; tip: THREE.Group; contact:THREE.Object3D; fingers?:Finger[]; thumb?:Finger; palm?:THREE.Mesh };
 const UP = new THREE.Vector3(0, 1, 0);
@@ -31,6 +31,12 @@ export class Character {
   private bodyLean = 0;
   private clipAnimation: { target: THREE.Vector3; elapsed: number; left: boolean } | null = null;
   private readonly belayDevice = new THREE.Group();
+  private landing:{size:'low'|'medium'|'high';progress:number}={size:'low',progress:0};
+  private lastState:CharacterState='idle';
+  private hangTime=0;
+  private hangFrom:PoseTargets|null=null;
+  private hangTorso=new THREE.Vector3();
+  private hangHips=new THREE.Vector3();
 
   constructor(color: string, helmet = false) {
     this.group.name = 'Climber';
@@ -163,10 +169,15 @@ export class Character {
   }
   setClimbPose(targets: PoseTargets): void { this.pose = targets; }
   setClimbingVisual(visual:ClimbingVisual|null):void {this.climbingVisual=visual;}
+  setLanding(size:'low'|'medium'|'high',progress:number):void {this.landing={size,progress};}
   /** The rendered contact point, useful for contact diagnostics without exposing meshes. */
   contactWorldPosition(limb:LimbId):THREE.Vector3 {
     const target=limb==='leftHand'?this.leftArm:limb==='rightHand'?this.rightArm:limb==='leftFoot'?this.leftLeg:this.rightLeg;
     this.group.updateWorldMatrix(true,true);return target.contact.getWorldPosition(new THREE.Vector3());
+  }
+  contactWorldOrientation(limb:LimbId):THREE.Quaternion {
+    const target=limb==='leftHand'?this.leftArm:limb==='rightHand'?this.rightArm:limb==='leftFoot'?this.leftLeg:this.rightLeg;
+    this.group.updateWorldMatrix(true,true);return target.tip.getWorldQuaternion(new THREE.Quaternion());
   }
   get isClipping(): boolean { return this.clipAnimation !== null; }
   playClip(target: THREE.Vector3): void {
@@ -208,6 +219,15 @@ export class Character {
   }
 
   update(dt: number, time: number, state: CharacterState, speed = 0): void {
+    if(state==='hang'&&this.lastState!=='hang'){
+      this.hangTime=0;
+      this.hangFrom={leftHand:this.leftArm.tip.position.clone(),rightHand:this.rightArm.tip.position.clone(),leftFoot:this.leftLeg.tip.position.clone(),rightFoot:this.rightLeg.tip.position.clone()};
+      this.hangTorso.set(this.body.rotation.x,this.body.rotation.y,this.body.rotation.z);
+      this.hangHips.set(this.pelvis.rotation.x,this.pelvis.rotation.y,this.pelvis.rotation.z);
+    }
+    if(state==='hang')this.hangTime+=dt;
+    this.lastState=state;
+    const hangingBlend=THREE.MathUtils.smoothstep(this.hangTime,0,.48);
     const walking = state === 'walk' || state === 'jog';
     this.belayDevice.visible = state === 'belay';
     if (state !== 'climb') this.clipAnimation = null;
@@ -228,6 +248,26 @@ export class Character {
       this.pelvis.rotation.set(0,0,0);this.pelvis.position.set(0,0,0);
     }
     this.head.rotation.set(state === 'belay' ? .44 : climbing&&!visual ? .22 : 0,state === 'idle' ? Math.sin(time * .32) * .10 : 0,0);
+    let compression=0,roll=0;
+    if(state==='hang'){
+      this.body.rotation.set(THREE.MathUtils.lerp(this.hangTorso.x,.18+Math.sin(time*1.7)*.008,hangingBlend),this.hangTorso.y*(1-hangingBlend),this.hangTorso.z*(1-hangingBlend));
+      this.pelvis.rotation.set(THREE.MathUtils.lerp(this.hangHips.x,.12,hangingBlend),this.hangHips.y*(1-hangingBlend),this.hangHips.z*(1-hangingBlend));
+      this.pivotAroundPelvis(this.body);this.pivotAroundPelvis(this.pelvis);
+      this.head.rotation.y=Math.sin(time*.35)*.12;
+    }
+    if(state==='land'){
+      const {size,progress:t}=this.landing;
+      const compressIn=THREE.MathUtils.smoothstep(t,0,.16),stand=1-THREE.MathUtils.smoothstep(t,.55,1);
+      compression=compressIn*stand;
+      roll=size==='low'?0:Math.sin(THREE.MathUtils.clamp((t-.17)/.62,0,1)*Math.PI)*(size==='high'?1.42:.68);
+      this.body.rotation.set(roll-.18*compression,0,roll*(size==='high'?.24:.12));
+      this.pelvis.rotation.set(roll*.58,0,roll*.14);
+      this.pivotAroundPelvis(this.body);this.pivotAroundPelvis(this.pelvis);
+      const sink=compression*(size==='low'?.22:.43)+(size==='high'?roll*.115:0);
+      this.body.position.y-=sink;
+      this.pelvis.position.y-=sink;
+      this.head.rotation.x=-roll*.45;
+    }
     this.group.updateWorldMatrix(true, false);
     if(visual?.lookTarget){
       this.body.updateWorldMatrix(true,false);
@@ -262,11 +302,18 @@ export class Character {
       rh.set(.15, this.belayAction === 'feed' ? .94 + handling * .065 : .72 + handling * .05, -.30);
       lf.set(-.2, .07, -.15 - this.tension * .08); rf.set(.18, .07, .13);
       this.body.position.z = this.tension * .045;
+    } else if(state==='hang'){
+      lh.set(-.25,.86,-.07);rh.set(.25,.82,-.08);
+      lf.set(-.18,.13,-.25);rf.set(.19,.18,-.29);
+      if(this.hangFrom){lh.lerp(this.hangFrom.leftHand,1-hangingBlend);rh.lerp(this.hangFrom.rightHand,1-hangingBlend);lf.lerp(this.hangFrom.leftFoot,1-hangingBlend);rf.lerp(this.hangFrom.rightFoot,1-hangingBlend);}
+    } else if(state==='land'){
+      lh.set(-.34,.67-compression*.48,.05+roll*.28);rh.set(.34,.65-compression*.44,.03+roll*.22);
+      lf.set(-.2,.075+roll*.19,-.16-roll*.19);rf.set(.21,.075+roll*.23,-.1-roll*.16);
     } else if (state === 'fall') {
       lh.set(-.31, 1.00, -.17); rh.set(.31, 1.06, -.17);
       lf.set(-.20, .18, -.25); rf.set(.21, .23, -.28);
     }
-    if (state !== 'belay'&&!visual) this.body.position.z = 0;
+    if (state !== 'belay'&&state !== 'hang'&&state !== 'land'&&!visual) this.body.position.z = 0;
     const limbs:Record<LimbId,Limb>={leftHand:this.leftArm,rightHand:this.rightArm,leftFoot:this.leftLeg,rightFoot:this.rightLeg};
     const targets:PoseTargets={leftHand:lh,rightHand:rh,leftFoot:lf,rightFoot:rf};
     const inverseRoot=this.group.getWorldQuaternion(new THREE.Quaternion()).invert();

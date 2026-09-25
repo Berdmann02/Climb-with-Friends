@@ -32,12 +32,12 @@ export class BelayController {
     this.currentAction = action;
   }
 
-  beginFall(height: number, lastClipHeight: number): void {
+  beginFall(height: number, lastClipHeight: number, topRope=false): void {
     if (!Number.isFinite(height) || !Number.isFinite(lastClipHeight)) return;
     this.height = Math.max(this.minimumHeight, height);
     const aboveProtection = Math.max(0, height - lastClipHeight);
     // A forgiving ground clamp keeps the prototype catch controlled and readable.
-    this.catchTarget = Math.max(this.minimumHeight, Math.min(height - 0.25, lastClipHeight - aboveProtection - this.extraSlack - 0.2));
+    this.catchTarget = Math.max(this.minimumHeight, topRope?height-Math.min(1.2,this.extraSlack+.18):Math.min(height - 0.25, lastClipHeight - aboveProtection - this.extraSlack - 0.2));
     this.velocity = 0;
     this.catchTime = 0;
     this.hasCaught = false;
@@ -74,7 +74,7 @@ export class BelayController {
     if (this.currentAction === 'lower') {
       if (this.height === null) this.height = Math.max(this.minimumHeight, climberHeight);
       this.currentState = 'lowering';
-      this.height = Math.max(this.minimumHeight, this.height - dt * 0.9);
+      this.height = Math.max(this.minimumHeight, this.height - dt * 0.7);
       this.ropeTension += (0.72 - this.ropeTension) * Math.min(1, dt * 5);
       this.extraSlack = Math.max(0.12, this.extraSlack - dt * 0.8);
       if (this.height <= this.minimumHeight) { this.currentState = 'ready'; this.hasCaught = false; }

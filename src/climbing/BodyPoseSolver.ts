@@ -104,7 +104,7 @@ export function solveBodyPose(contacts: Record<LimbId, LimbContact>, surface: Cl
   const centers = active.map(limb => ({ limb, point: contactJointTarget(contacts[limb]).sub(joints[limb]), radius: (isHand(limb) ? ARM_REACH : LEG_REACH) - REACH_MARGIN }));
   const constrainWall = (root: Vector3) => {
     const depth = root.clone().sub(surface.origin).dot(normal);
-    root.addScaledVector(normal, MathUtils.clamp(depth, .27, .67) - depth);
+    root.addScaledVector(normal, MathUtils.clamp(depth, .27, surface.material==='rock'?1.1:.67) - depth);
     root.y = Math.max(0, root.y);
   };
   // Try both the prior posture and the weighted contact center. In thin feasible
@@ -150,7 +150,7 @@ export function constrainBodyRoot(contacts: Record<LimbId, LimbContact>, surface
       if (distance > constraint.radius) root.addScaledVector(delta, -(distance - constraint.radius) / distance);
     }
     const depth = root.clone().sub(surface.origin).dot(normal);
-    root.addScaledVector(normal, MathUtils.clamp(depth, .255, .69) - depth);
+    root.addScaledVector(normal, MathUtils.clamp(depth, .255, surface.material==='rock'?1.1:.69) - depth);
     root.y = Math.max(0, root.y);
   }
   return bodyPoseAtRoot(contacts, surface, root);
