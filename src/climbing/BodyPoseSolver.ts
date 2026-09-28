@@ -136,6 +136,72 @@ export interface BodyIntent {
   point: Vector3;
   orientation: Quaternion;
   effort: number;
+  drive?: boolean;
+}
+
+/** A supported stand-up goal, not a diminishing upward force against the rest pose. */
+function standingReach(contacts: Record<LimbId, LimbContact>, surface: ClimbSurface, root: Vector3, intent: BodyIntent): BodyPose | null {
+  const normal = surface.normal.clone().normalize(), right = surface.up.clone().cross(normal).normalize();
+  const up = normal.clone().cross(right).normalize();
+  const current = bodyPoseAtRoot(contacts, surface, root);
+  const side = intent.limb.startsWith('left') ? 'left' : 'right';
+  const wrist = contactJointTarget({ ...contacts[intent.limb], point: intent.point, orientation: intent.orientation });
+  let best: BodyPose | null = null, bestCost = Infinity;
+  for (const limb of ['leftFoot', 'rightFoot'] as const) {
+    const foot = contacts[limb];
+    if (!supports(foot, limb) || foot.quality < .25) continue;
+    const hip = current.hips[limb === 'leftFoot' ? 'left' : 'right'];
+    const ankle = contactJointTarget(foot);
+    if (ankle.clone().sub(hip).dot(up) > .12) continue;
+    const goal = root.clone();
+    // Put weight over the shoe before extending. A modest lean follows the reach,
+    // but neither the opposite nor same-side foot is privileged unconditionally.
+    const lean = MathUtils.clamp(wrist.clone().sub(ankle).dot(right) * .12, -.10, .10);
+    goal.addScaledVector(right, ankle.dot(right) + lean - goal.dot(right));
+    const depth = foot.point.clone().sub(surface.origin).dot(normal) + .26;
+    goal.addScaledVector(normal, depth - goal.clone().sub(surface.origin).dot(normal));
+    const hipOffset = hip.clone().sub(root);
+    const sideways = goal.clone().add(hipOffset).sub(ankle).projectOnPlane(up).lengthSq();
+    const extension = LEG_REACH - REACH_MARGIN;
+    const standHeight = ankle.dot(up) + Math.sqrt(Math.max(0, extension * extension - sideways)) - hipOffset.dot(up);
+    goal.addScaledVector(up, standHeight - goal.dot(up));
+    let candidate = constrainBodyRoot(contacts, surface, goal);
+    const preserveReach = isHand(intent.limb) && !contacts[intent.limb].planted
+      && candidate.shoulders[side].distanceTo(wrist) < ARM_REACH - .004;
+    const shoulderOffset = current.shoulders[side].clone().sub(root);
+    // Ascend the intersection of planted-limb reach spheres. This allows small
+    // hip adjustments at extension and stops at the stance's physical ceiling,
+    // independent of how high the pointer happens to be.
+    for (let i = 0; i < 16; i++) {
+      const proposed = candidate.root.clone().addScaledVector(up, .08);
+      // Keep an already reachable mouse target within reach while standing.
+      if (preserveReach) {
+        const delta = wrist.clone().sub(proposed).sub(shoulderOffset), distance = delta.length();
+        if (distance > ARM_REACH - REACH_MARGIN) proposed.addScaledVector(delta, 1 - (ARM_REACH - REACH_MARGIN) / distance);
+      }
+      let higher = constrainBodyRoot(contacts, surface, proposed);
+      if (preserveReach) for (let correction = 0; correction < 8; correction++) {
+        const delta = wrist.clone().sub(higher.root).sub(shoulderOffset), distance = delta.length();
+        if (distance <= ARM_REACH - REACH_MARGIN + .0001) break;
+        higher = constrainBodyRoot(contacts, surface, higher.root.clone().addScaledVector(delta, 1 - (ARM_REACH - REACH_MARGIN) / distance));
+      }
+      if (!higher.feasible || higher.root.dot(up) <= candidate.root.dot(up) + .00001) break;
+      candidate = higher;
+    }
+    if (!candidate.feasible || candidate.root.clone().sub(root).dot(up) < -.015) continue;
+    const cost = -candidate.root.dot(up) + candidate.shoulders[side].distanceTo(wrist) * .03
+      + (isHand(intent.limb) && !contacts[intent.limb].planted ? Math.max(0, candidate.shoulders[side].distanceTo(wrist) - (ARM_REACH - REACH_MARGIN)) * 2 : 0)
+      + Math.abs(candidate.centerOfMass.clone().sub(ankle).dot(right)) * .15
+      + (1 - foot.quality) * .18;
+    if (cost < bestCost) { best = candidate; bestCost = cost; }
+  }
+  if (!best) return null;
+  // The spring integrator supplies acceleration and speed limits. Limit the rise
+  // while the hips are still far across from the chosen support column.
+  const across = Math.abs(best.root.clone().sub(root).dot(right));
+  const rise = best.root.clone().sub(root).dot(up);
+  if (rise > 0) best.root.addScaledVector(up, -rise * MathUtils.clamp((across - .08) / .35, 0, .85));
+  return constrainBodyRoot(contacts, surface, best.root);
 }
 
 /** Nearest feasible root; used after inertial integration, without a pose tween. */
@@ -158,6 +224,10 @@ export function constrainBodyRoot(contacts: Record<LimbId, LimbContact>, surface
 
 /** A fresh force target each frame, biased by the currently aimed free limb. */
 export function solveContinuousBodyPose(contacts: Record<LimbId, LimbContact>, surface: ClimbSurface, previousRoot: Vector3, intent: BodyIntent | null, support: number): BodyPose {
+  if (intent?.drive) {
+    const standing = standingReach(contacts, surface, previousRoot, intent);
+    if (standing) return standing;
+  }
   const normal = surface.normal.clone().normalize(), right = surface.up.clone().cross(normal).normalize();
   const up = normal.clone().cross(right).normalize();
   const active = LIMBS.filter(limb => supports(contacts[limb], limb));

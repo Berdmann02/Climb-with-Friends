@@ -42,6 +42,7 @@ export class ClimbingController {
   private limbs = new LimbTargetController();
   private rootVelocity = new Vector3();
   private overreach = 0;
+  private reachDrive = false;
   private instability = 0;
   private slipping: { limb: LimbId; elapsed: number; distance: number } | null = null;
   private finishLocked=false;
@@ -60,6 +61,7 @@ export class ClimbingController {
   get height(): number { return this.character.group.position.y; }
   get currentHoldId(): string | null { return this.lastHold; }
   get selectedLimb(): LimbId { return this.selected; }
+  setReachDrive(enabled: boolean): void { this.reachDrive = this.running && enabled; }
   get phase(): ClimbPhase { return this.currentPhase; }
   get ropeSupported():boolean { return this.supportRoot!==null; }
   unlockFinish():void { this.finishLocked=false; }
@@ -77,6 +79,7 @@ export class ClimbingController {
   }
   setSurface(surface: ClimbSurface): void { this.surface = surface; }
   stop(): void {
+    this.reachDrive = false;
     this.running = false; this.complete = false; this.fell = false; this.controlled = false;
     this.currentPhase = 'idle'; this.instability = 0; this.slipping = null; this.desiredRequest = null; this.desiredTarget = null;
     this.rootVelocity.set(0, 0, 0); this.limbs.reset(); this.overreach = 0; this.finishLocked=false; this.finishAwarded=false; this.supportRoot=null; this.regainedSupport=0;
@@ -143,6 +146,7 @@ export class ClimbingController {
 
   selectLimb(limb: LimbId): void {
     if (!this.running || this.finishLocked || !LIMBS.includes(limb)) return;
+    this.reachDrive = false;
     if (this.controlled) {
       this.freeGoals[this.selected].copy(this.contactSet[this.selected].point);
       this.freeOrientations[this.selected].copy(this.contactSet[this.selected].orientation);
@@ -217,8 +221,10 @@ export class ClimbingController {
         this.freeState(contact);
       }
     }
+    const standingLimb = isHand(this.selected) ? this.selected : 'leftHand';
     const intent = this.controlled && this.desiredTarget
-      ? { limb: this.selected, point: this.desiredTarget.point, orientation: this.desiredTarget.orientation, effort: this.overreach } : null;
+      ? { limb: this.selected, point: this.desiredTarget.point, orientation: this.desiredTarget.orientation, effort: this.overreach, drive: this.reachDrive }
+      : this.reachDrive ? { limb: standingLimb, point: this.contactSet[standingLimb].point, orientation: this.contactSet[standingLimb].orientation, effort: 0, drive: true } : null;
     const equilibrium = solveContinuousBodyPose(this.contactSet, this.surface, this.pose.root, intent, this.balance.support);
     if(this.supportRoot){
       // The loaded rope supports this position while the player reconnects.

@@ -31,6 +31,7 @@ export class ClimbInput {
   update(climb:ClimbingController,world?:World,route?:RouteData,holds?:HoldRenderer){
     for(const [key,limb] of Object.entries(LIMB_KEYS))if(this.input.consume(key))climb.selectLimb(limb);
     if(this.input.consume('Backspace'))climb.releaseSelected();
+    climb.setReachDrive(this.input.down('Space')&&!this.orbiting);
     if(climb.controlling&&world&&route&&holds&&this.pointer&&!this.orbiting){
       climb.aim(this.project(this.pointer.x,this.pointer.y,world,route,holds,true));
     }

@@ -10,8 +10,8 @@ import type {ClimbingController} from '../src/climbing/ClimbingController';
 describe('manual click input',()=>{
   it('maps Q/W/A/S only to selection and never issues a movement request',()=>{
     const selected:string[]=[];
-    const input={consume:(key:string)=>Object.keys(LIMB_KEYS).includes(key)} as Input;
-    const controller={selectLimb:(limb:string)=>selected.push(limb),releaseSelected:()=>{throw Error('unexpected release');}} as unknown as ClimbingController;
+    const input={down:()=>false,consume:(key:string)=>Object.keys(LIMB_KEYS).includes(key)} as unknown as Input;
+    const controller={setReachDrive:()=>{},selectLimb:(limb:string)=>selected.push(limb),releaseSelected:()=>{throw Error('unexpected release');}} as unknown as ClimbingController;
     new ClimbInput({} as HTMLCanvasElement,new PerspectiveCamera(),input).update(controller);
     expect(selected).toEqual(['leftHand','rightHand','leftFoot','rightFoot']);
   });
