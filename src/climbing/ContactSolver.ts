@@ -3,6 +3,7 @@ import type { HoldData } from '../core/contracts';
 import { isHand } from './types';
 import type { BodyPose, ClimbSurface, ContactRequest, GripType, LimbContact, LimbId } from './types';
 import { ARM_REACH, LEG_REACH, contactJointTarget } from './BodyPoseSolver';
+import {palmQuality} from './WallContactResolver';
 
 const clamp = MathUtils.clamp;
 const LOCAL_NORMAL = new Vector3(0, 0, 1);
@@ -66,7 +67,7 @@ function worldDirection(direction: Vector3, surface: ClimbSurface): Vector3 {
   return surfaceRight(surface).multiplyScalar(direction.x).addScaledVector(surface.up, direction.y).addScaledVector(surface.normal, direction.z).normalize();
 }
 
-/** Resolve geometry only. Free hands may aim at a wall without being allowed to grab it. */
+/** Resolve the exact surface patch and align the palm/toe with its normal. */
 export function getContactTarget(limb:LimbId,request:ContactRequest,surface:ClimbSurface,body?:BodyPose):ContactTarget|null {
   if(![...request.point.toArray(),...request.normal.toArray()].every(Number.isFinite))return null;
   if(request.hold&&request.hold.wallId!==surface.id)return null;
@@ -111,7 +112,8 @@ export function getContactTarget(limb:LimbId,request:ContactRequest,surface:Clim
 export function createContact(limb: LimbId, request: ContactRequest, surface: ClimbSurface, body: BodyPose): LimbContact | null {
   const hand = isHand(limb);
   if (![...request.point.toArray(), ...request.normal.toArray()].every(Number.isFinite)) return null;
-  if (hand && (!request.hold || request.hold.handAllowed === false || request.hold.type === 'foothold' && request.hold.handAllowed !== true)) return null;
+  if (hand && request.hold && (request.hold.handAllowed === false || request.hold.type === 'foothold' && request.hold.handAllowed !== true)) return null;
+  if (hand && !request.hold && !request.surfaceHit) return null;
   if (!hand && request.hold?.footAllowed === false) return null;
   if (request.hold && request.hold.wallId !== surface.id) return null;
   const resolved=getContactTarget(limb,request,surface,body);if(!resolved)return null;
@@ -128,6 +130,17 @@ export function createContact(limb: LimbId, request: ContactRequest, surface: Cl
     rotation = metadata.rotation; direction = worldDirection(metadata.direction, surface);
     kind = 'hold';
     if (!hand) strength = hold.gripStrength ?? (hold.type === 'sloper' ? .62 : .94);
+  } else if(request.rock) {
+    const rock=request.rock;
+    grip=rock.grip;friction=rock.friction;direction=rock.direction.clone();
+    if(hand){strength=rock.strength;kind=strength>.32?'rock':'palm';}
+    else {
+      const ledge=Math.max(0,normal.dot(surface.up));
+      strength=clamp(.28+ledge*.65+rock.edgeDepth*3,.28,.96);
+      kind=ledge>.25||rock.edgeDepth>.025?'rock':'smear';
+    }
+  } else if(hand) {
+    kind='palm';grip='sloper';strength=.22;friction=.23;direction=normal.clone().negate();
   } else {
     const delta = point.clone().sub(anchor(limb, body));
     const sideways = Math.abs(delta.dot(right));
@@ -152,7 +165,7 @@ export function createContact(limb: LimbId, request: ContactRequest, surface: Cl
   return contact;
 }
 
-/** Quality is recomputed from posture; contact positions and orientations never slide. */
+/** Quality is recomputed from posture, force direction and accumulated surface slip. */
 export function updateContactQuality(contact: LimbContact, body: BodyPose, surface: ClimbSurface): number {
   if (contact.kind === 'free' || contact.state === 'moving' || contact.state === 'free') return 0;
   const hand = isHand(contact.limb);
@@ -161,8 +174,10 @@ export function updateContactQuality(contact: LimbContact, body: BodyPose, surfa
   const reach = distance <= limit ? 1 - Math.max(0, distance / limit - .85) * .8 : clamp(1 - (distance - limit) * 13, 0, 1);
   const posture = reach * (body.feasible ? 1 : .65) * (1 - clamp(body.strain, 0, 1) * .14);
   if (contact.kind === 'flag') return clamp(posture, 0, 1);
+  if (contact.kind === 'palm') return clamp(palmQuality(contact,body)*posture,0,.22);
   if (contact.kind === 'smear') {
-    const angleFactor = clamp(1 - Math.sin(surface.angle) * 1.35, .08, 1.45);
+    const localAngle=surface.material==='rock'?-Math.asin(clamp(contact.normal.dot(surface.up),-1,1)):surface.angle;
+    const angleFactor = clamp(1 - Math.sin(localAngle) * 1.35, .08, 1.45);
     const beneath = contact.point.dot(surface.up) < body.pelvis.dot(surface.up) ? 1 : .3;
     const roughness = surface.material === 'rock' ? 1.12 : .94;
     return clamp(.83 * contact.friction * angleFactor * roughness * beneath * posture, 0, .93);

@@ -9,7 +9,7 @@ export const LIMB_KEYS:Readonly<Record<string,LimbId>>={KeyQ:'leftHand',KeyW:'ri
 export const LIMB_LABELS:Record<LimbId,string>={leftHand:'Left hand',rightHand:'Right hand',leftFoot:'Left foot',rightFoot:'Right foot'};
 export function surfaceForWorld(world:World):ClimbSurface {
   const angle=world.wall.angle??0;
-  return {id:world.wall.id,origin:new Vector3(0,0,world.wall.z),normal:new Vector3(0,-Math.sin(angle),Math.cos(angle)),up:new Vector3(0,Math.cos(angle),Math.sin(angle)),angle,friction:world.wall.friction??(world.wall.id.startsWith('outdoor')?.82:.66),material:world.wall.material??(world.wall.id.startsWith('outdoor')?'rock':'plywood'),bounds:world.wall};
+  return {id:world.wall.id,origin:new Vector3(0,0,world.wall.z),normal:new Vector3(0,-Math.sin(angle),Math.cos(angle)),up:new Vector3(0,Math.cos(angle),Math.sin(angle)),angle,friction:world.wall.friction??(world.wall.id.startsWith('outdoor')?.82:.66),material:world.wall.material??(world.wall.id.startsWith('outdoor')?'rock':'plywood'),bounds:world.wall,sampleRock:world.rockSurface?point=>world.rockSurface!.sample(point):undefined};
 }
 
 /** Pointer input owns the desired target; character/body solvers own the physical result. */
@@ -54,8 +54,8 @@ export class ClimbInput {
       if(id){const hold=route.holds.find(h=>h.id===id);if(hold)return {point:first.point.clone(),normal,hold,surfaceHit:true};}
       const wall=world.wall;
       const onWall=first.point.x>=wall.minX&&first.point.x<=wall.maxX&&first.point.y>=wall.minY&&first.point.y<=wall.maxY
-        &&Math.abs(first.point.clone().sub(surface.origin).dot(surface.normal))<(surface.material==='rock'?.8:.25)&&normal.dot(surface.normal)>(surface.material==='rock'?.2:.45);
-      if(onWall)return {point:first.point.clone(),normal,surfaceHit:true};
+        &&(first.object.userData.climbableRock||Math.abs(first.point.clone().sub(surface.origin).dot(surface.normal))<.25&&normal.dot(surface.normal)>.45);
+      if(onWall){const rock=first.object.userData.climbableRock?world.rockSurface?.sample(first.point):undefined;return {point:first.point.clone(),normal,surfaceHit:true,...(rock?{rock}: {})};}
       // An actual foreground object blocks grabbing anything behind it.
       if(!allowWallProjection)return null;
     }

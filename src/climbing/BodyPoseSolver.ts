@@ -7,6 +7,14 @@ export const LEG_REACH = .8;
 const REACH_MARGIN = .008;
 const PELVIS = new Vector3(0, .8, 0);
 
+function rockClearance(root:Vector3,surface:ClimbSurface):void {
+  if(!surface.sampleRock)return;
+  for(const height of [.8,1.24]){
+    const rock=surface.sampleRock(root.clone().add(new Vector3(0,height,0)));
+    if(rock)root.z=Math.max(root.z,rock.point.z+.255);
+  }
+}
+
 /** Wrist/ankle sit behind the contact patch; IK does not place the wrist at fingertips. */
 export function contactJointTarget(contact: LimbContact): Vector3 {
   const offset = isHand(contact.limb) ? new Vector3(0, -.09, .035) : new Vector3(0, .02, .16);
@@ -56,7 +64,7 @@ function offsets(contacts: Record<LimbId, LimbContact>, surface: ClimbSurface) {
 
 function supports(contact: LimbContact, limb: LimbId, movingLimb?: LimbId): boolean {
   return limb !== movingLimb && contact.planted && contact.kind !== 'free' && contact.kind !== 'flag'
-    && contact.state !== 'moving' && contact.state !== 'slipping' && contact.state !== 'free';
+    && contact.state !== 'moving' && (contact.state !== 'slipping'||contact.kind==='palm') && contact.state !== 'free';
 }
 
 /** Returns world joint positions and strain without changing any contact point. */
@@ -104,8 +112,9 @@ export function solveBodyPose(contacts: Record<LimbId, LimbContact>, surface: Cl
   const centers = active.map(limb => ({ limb, point: contactJointTarget(contacts[limb]).sub(joints[limb]), radius: (isHand(limb) ? ARM_REACH : LEG_REACH) - REACH_MARGIN }));
   const constrainWall = (root: Vector3) => {
     const depth = root.clone().sub(surface.origin).dot(normal);
-    root.addScaledVector(normal, MathUtils.clamp(depth, .27, surface.material==='rock'?1.1:.67) - depth);
+    root.addScaledVector(normal, MathUtils.clamp(depth, surface.sampleRock?-1:.27, surface.material==='rock'?1.8:.67) - depth);
     root.y = Math.max(0, root.y);
+    rockClearance(root,surface);
   };
   // Try both the prior posture and the weighted contact center. In thin feasible
   // intersections, the former converges much faster and avoids visible jumps.
@@ -216,8 +225,9 @@ export function constrainBodyRoot(contacts: Record<LimbId, LimbContact>, surface
       if (distance > constraint.radius) root.addScaledVector(delta, -(distance - constraint.radius) / distance);
     }
     const depth = root.clone().sub(surface.origin).dot(normal);
-    root.addScaledVector(normal, MathUtils.clamp(depth, .255, surface.material==='rock'?1.1:.69) - depth);
+    root.addScaledVector(normal, MathUtils.clamp(depth, surface.sampleRock?-1:.255, surface.material==='rock'?1.8:.69) - depth);
     root.y = Math.max(0, root.y);
+    rockClearance(root,surface);
   }
   return bodyPoseAtRoot(contacts, surface, root);
 }

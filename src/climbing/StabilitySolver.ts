@@ -25,7 +25,7 @@ export function evaluateStability(contacts: Record<LimbId, LimbContact>, body: B
     }
     qualities[limb] = updateContactQuality(contact, body, surface);
     if (contact.kind === 'flag' && contact.state !== 'moving' && contact.state !== 'free') { flags.push(limb); continue; }
-    if (!contact.planted || qualities[limb] <= .025 || contact.kind === 'free' || contact.state === 'slipping') continue;
+    if (!contact.planted || qualities[limb] <= .001 || contact.kind === 'free' || contact.state === 'slipping'&&contact.kind!=='palm') continue;
     if (isHand(limb)) { hands.push(limb); handCapacity += qualities[limb]; }
     else { feet.push(limb); footCapacity += qualities[limb]; }
   }

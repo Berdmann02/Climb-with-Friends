@@ -26,7 +26,8 @@ export class LimbTargetController {
       if (highStep > .28) contact.point.addScaledVector(up, .28 - highStep);
     }
     const depth = contact.point.clone().sub(surface.origin).dot(normal);
-    const minimumDepth=surface.material==='rock'?-.38:.006;
+    const rock=surface.sampleRock?.(contact.point);
+    const minimumDepth=rock?rock.point.clone().sub(surface.origin).dot(normal)+.008:surface.material==='rock'?-.38:.006;
     if (depth < minimumDepth) contact.point.addScaledVector(normal, minimumDepth - depth);
     const offset = contactJointTarget(contact).sub(contact.point);
     const delta = contact.point.clone().add(offset).sub(anchor), length = delta.length();

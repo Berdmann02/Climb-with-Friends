@@ -14,6 +14,7 @@ export class BelayController {
   private catchTime = 0;
   private hasCaught = false;
   private lockApplied = false;
+  private protectedFall = true;
   readonly minimumHeight = 0.85;
 
   get slack(): number { return this.extraSlack; }
@@ -36,8 +37,9 @@ export class BelayController {
     if (!Number.isFinite(height) || !Number.isFinite(lastClipHeight)) return;
     this.height = Math.max(this.minimumHeight, height);
     const aboveProtection = Math.max(0, height - lastClipHeight);
-    // A forgiving ground clamp keeps the prototype catch controlled and readable.
-    this.catchTarget = Math.max(this.minimumHeight, topRope?height-Math.min(1.2,this.extraSlack+.18):Math.min(height - 0.25, lastClipHeight - aboveProtection - this.extraSlack - 0.2));
+    const target=topRope?height-this.extraSlack-.18:Math.min(height-.25,lastClipHeight-aboveProtection-this.extraSlack-.2);
+    this.protectedFall=(topRope||lastClipHeight>this.minimumHeight)&&target>this.minimumHeight;
+    this.catchTarget=Math.max(this.minimumHeight,target);
     this.velocity = 0;
     this.catchTime = 0;
     this.hasCaught = false;
@@ -56,7 +58,7 @@ export class BelayController {
     if (!Number.isFinite(dt) || dt <= 0 || !Number.isFinite(climberHeight)) return;
     dt = Math.min(dt, 0.1);
     if (this.currentState === 'falling' && this.height !== null) {
-      if (this.currentAction === 'lock' && !this.lockApplied) {
+      if (this.protectedFall && this.currentAction === 'lock' && !this.lockApplied) {
         this.catchTarget = Math.min(this.height - 0.05, this.catchTarget + 0.3);
         this.extraSlack = Math.max(0.08, this.extraSlack - 0.2);
         this.lockApplied = true;
@@ -65,6 +67,7 @@ export class BelayController {
       this.height -= this.velocity * dt;
       this.ropeTension += (0.12 - this.ropeTension) * Math.min(1, dt * 12);
       if (this.height <= this.catchTarget) {
+        if(!this.protectedFall){this.height=this.minimumHeight;this.velocity=0;this.currentState='ready';this.ropeTension=0;this.previousClimberHeight=climberHeight;return;}
         this.height = this.catchTarget; this.velocity = 0; this.hasCaught = true;
         this.currentState = 'caught'; this.currentAction = this.currentAction === 'lower' ? 'lower' : 'lock'; this.ropeTension = 1;
       }

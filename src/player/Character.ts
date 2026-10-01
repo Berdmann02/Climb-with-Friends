@@ -180,6 +180,7 @@ export class Character {
     this.group.updateWorldMatrix(true,true);return target.tip.getWorldQuaternion(new THREE.Quaternion());
   }
   get isClipping(): boolean { return this.clipAnimation !== null; }
+  cancelClipping():void {this.clipAnimation=null;}
   playClip(target: THREE.Vector3): void {
     this.clipAnimation = { target: target.clone(), elapsed: 0, left: target.x < this.group.position.x };
   }
@@ -326,7 +327,7 @@ export class Character {
       if(hand){
         const contact=visual?.contacts[id];
         const open=!!contact&&(!contact.planted||contact.kind==='free'||contact.state==='free'||contact.state==='moving');
-        this.poseGrip(limb,contact?.grip??'sloper',id==='leftHand'?-1:1,visual?.tension??0,open);
+        this.poseGrip(limb,contact?.grip??'sloper',id==='leftHand'?-1:1,visual?.tension??0,open||contact?.kind==='palm');
       }
     }
     const armPole=(side:number)=>torsoPoint(new THREE.Vector3(side*.64,1.04,.24));

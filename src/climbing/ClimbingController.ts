@@ -5,6 +5,7 @@ import { createContact, getContactTarget, surfaceRight } from './ContactSolver';
 import { evaluateStability } from './StabilitySolver';
 import { ARM_REACH, LEG_REACH, bodyPoseAtRoot, constrainBodyRoot, contactJointTarget, solveBodyPose, solveContinuousBodyPose, surfaceOrientation } from './BodyPoseSolver';
 import { LimbTargetController } from './LimbTargetController';
+import {slideWallContact} from './WallContactResolver';
 import { LIMBS, isHand } from './types';
 import type { BodyPose, ClimbPhase, ClimbSurface, ContactRequest, LimbContact, LimbId, StabilityResult } from './types';
 
@@ -61,6 +62,8 @@ export class ClimbingController {
   get height(): number { return this.character.group.position.y; }
   get currentHoldId(): string | null { return this.lastHold; }
   get selectedLimb(): LimbId { return this.selected; }
+  get desiredTargetPosition():Vector3|null { return this.desiredTarget?.point.clone()??null; }
+  get actualLimbPosition():Vector3 { return this.character.contactWorldPosition(this.selected); }
   setReachDrive(enabled: boolean): void { this.reachDrive = this.running && enabled; }
   get phase(): ClimbPhase { return this.currentPhase; }
   get ropeSupported():boolean { return this.supportRoot!==null; }
@@ -79,6 +82,8 @@ export class ClimbingController {
   }
   setSurface(surface: ClimbSurface): void { this.surface = surface; }
   stop(): void {
+    this.character.cancelClipping();
+    for(const limb of LIMBS)this.detach(limb);
     this.reachDrive = false;
     this.running = false; this.complete = false; this.fell = false; this.controlled = false;
     this.currentPhase = 'idle'; this.instability = 0; this.slipping = null; this.desiredRequest = null; this.desiredTarget = null;
@@ -89,6 +94,7 @@ export class ClimbingController {
   /** Initial attachment is the only automatic placement in this controller. */
   start(): boolean {
     this.stop();
+    if(this.surface.material==='rock'&&this.surface.sampleRock)return this.startOnRock();
     const handHolds = this.route?.holds.filter(h => h.type !== 'foothold') ?? [];
     if (!handHolds.length) return false;
     const marked = handHolds.filter(h => h.start).sort((a, b) => a.position[1] - b.position[1]);
@@ -126,6 +132,27 @@ export class ClimbingController {
     for (const limb of LIMBS) { this.freeGoals[limb].copy(contacts[limb].point); this.freeOrientations[limb].copy(contacts[limb].orientation); }
     this.refreshStability(); this.syncVisual();
     return true;
+  }
+
+  /** Start at the low bedding seam. There are no outdoor hold IDs or snap markers. */
+  private startOnRock():boolean {
+    const sample=this.surface.sampleRock!;
+    const x=MathUtils.clamp(this.character.group.position.x,this.surface.bounds.minX+.6,this.surface.bounds.maxX-.6);
+    const startHeight=Math.max(0,this.character.group.position.y);
+    const requests={} as Record<LimbId,ContactRequest>,contacts=emptyContacts();
+    for(const limb of LIMBS){
+      const side=limb.startsWith('left')?-1:1;
+      const rock=sample(new Vector3(x+side*(isHand(limb)?.32:.2),startHeight+(isHand(limb)?1.33:.22),0));
+      if(!rock)return false;
+      requests[limb]={point:rock.point,normal:rock.normal,rock,surfaceHit:true};contacts[limb]=this.provisional(limb,requests[limb]);
+    }
+    let body=solveBodyPose(contacts,this.surface,new Vector3(x,startHeight,requests.leftHand.point.z+.4));
+    for(const limb of LIMBS){const contact=createContact(limb,requests[limb],this.surface,body);if(!contact)return false;contacts[limb]=contact;}
+    body=solveBodyPose(contacts,this.surface,body.root);if(!body.feasible)return false;
+    this.contactSet=contacts;this.pose=body;this.running=true;this.currentPhase='idle';
+    this.character.group.position.copy(body.root);this.character.group.quaternion.copy(surfaceOrientation(this.surface));
+    for(const limb of LIMBS){this.freeGoals[limb].copy(contacts[limb].point);this.freeOrientations[limb].copy(contacts[limb].orientation);}
+    this.refreshStability();this.syncVisual();return true;
   }
 
 
@@ -170,9 +197,6 @@ export class ClimbingController {
     if (!contact) return { accepted: false };
     const rendered = this.character.contactWorldPosition(this.selected);
     if (rendered.distanceTo(contact.point) > .095 || this.contactSet[this.selected].point.distanceTo(contact.point) > .095) return { accepted: false };
-    const side = this.selected.startsWith('left') ? 'left' : 'right';
-    const anchor = isHand(this.selected) ? this.pose.shoulders[side] : this.pose.hips[side];
-    if (anchor.distanceTo(contactJointTarget(contact)) > (isHand(this.selected) ? ARM_REACH : LEG_REACH) - .004) return { accepted: false };
     if (!isHand(this.selected) && contact.kind !== 'flag') {
       const delta = contact.point.clone().sub(this.pose.pelvis);
       const lateral = delta.dot(surfaceRight(this.surface));
@@ -183,7 +207,9 @@ export class ClimbingController {
       if(other.planted&&other.point.distanceTo(contact.point)<MIN_HAND_SEPARATION)return {accepted:false};
     }
     const proposed = { ...this.contactSet, [this.selected]: contact };
-    if (!bodyPoseAtRoot(proposed, this.surface, this.pose.root).feasible) return { accepted: false };
+    const settled=constrainBodyRoot(proposed,this.surface,this.pose.root);
+    if(!settled.feasible||settled.root.distanceTo(this.pose.root)>.075)return {accepted:false};
+    this.pose=settled;this.character.group.position.copy(settled.root);
     this.contactSet[this.selected] = contact; this.freeGoals[this.selected].copy(contact.point);
     this.freeOrientations[this.selected].copy(contact.orientation); this.limbs.reset(this.selected);
     this.controlled = false; this.desiredRequest = null; this.desiredTarget = null; this.currentPhase = 'contact';
@@ -194,6 +220,8 @@ export class ClimbingController {
   }
 
   releaseSelected(): void { if (this.running) this.selectLimb(this.selected); }
+  /** Uses the existing gravity/rope fall handoff, including after the finish lock. */
+  drop():boolean {if(!this.running)return false;this.fall();return true;}
 
   update(dt: number, _time: number): void {
     if (!this.running || !Number.isFinite(dt) || dt <= 0) return;
@@ -214,6 +242,10 @@ export class ClimbingController {
     }
     this.overreach = MathUtils.lerp(this.overreach, requestedStrain, 1 - Math.exp(-dt * 7));
     this.advanceSlip(dt);
+    for(const limb of LIMBS){
+      const contact=this.contactSet[limb];
+      if(slideWallContact(contact,this.pose,this.surface,dt))this.detach(limb);
+    }
     for (const limb of LIMBS) {
       const contact = this.contactSet[limb];
       if (!contact.planted && contact.state !== 'slipping') {
@@ -255,7 +287,7 @@ export class ClimbingController {
     else this.instability += dt * (this.balance.level === 'unstable' ? .6 : 1) * (1 + this.overreach * .2);
     if (this.instability >= 3 && !this.slipping) {
       const weakest = this.balance.weakest;
-      if (weakest && this.contactSet[weakest].planted) {
+      if (weakest && this.contactSet[weakest].planted&&this.contactSet[weakest].kind!=='palm') {
         this.slipping = { limb: weakest, elapsed: 0, distance: 0 };
         this.contactSet[weakest].state = 'slipping'; this.contactSet[weakest].planted = false;
       } else if (this.instability > 3.5 && this.balance.score < .32) this.fall();
@@ -269,6 +301,11 @@ export class ClimbingController {
   private checkFinish():void {
     if(this.finishAwarded||!this.running)return;
     const left=this.contactSet.leftHand,right=this.contactSet.rightHand;
+    if(this.surface.material==='rock'&&left.planted&&right.planted&&left.kind==='rock'&&right.kind==='rock'
+      &&Math.min(left.point.y,right.point.y)>=(this.surface.bounds.topAnchor?.[1]??this.surface.bounds.maxY)-.28
+      &&Math.abs((left.point.x+right.point.x)*.5-(this.surface.bounds.topAnchor?.[0]??0))<.9&&this.balance.score>.32){
+      this.complete=true;this.finishAwarded=true;this.finishLocked=true;this.controlled=false;return;
+    }
     const same=left.planted&&right.planted&&left.holdId&&left.holdId===right.holdId;
     if(same&&this.pose.feasible&&left.quality>.28&&right.quality>.28&&left.state!=='slipping'&&right.state!=='slipping'
       &&left.point.distanceTo(right.point)>=MIN_HAND_SEPARATION&&this.route?.holds.some(h=>h.finish&&h.id===left.holdId)){
@@ -301,13 +338,17 @@ export class ClimbingController {
     this.slipping = null; this.instability = Math.min(this.instability, 1);
   }
   private fall(): void {
+    this.character.cancelClipping();
+    for(const limb of LIMBS)this.detach(limb);
+    this.supportRoot=null;this.slipping=null;this.desiredTarget=null;this.desiredRequest=null;this.reachDrive=false;
     this.running = false; this.fell = true; this.complete = false; this.controlled = false; this.currentPhase = 'falling';
+    this.character.setClimbingVisual(null);
   }
 
   private provisional(limb: LimbId, request: ContactRequest): LimbContact {
     const contact = freeContact(limb), normal = this.surface.normal.clone().normalize();
     const right = this.surface.up.clone().cross(normal).normalize(), up = normal.clone().cross(right).normalize();
-    contact.kind = request.hold ? 'hold' : 'smear'; contact.state = 'attached'; contact.planted = true;
+    contact.kind = request.hold ? 'hold' : request.rock?'rock':isHand(limb)?'palm':'smear'; contact.state = 'attached'; contact.planted = true;
     const target = getContactTarget(limb, request, this.surface);
     contact.point.copy(target?.point ?? request.point); contact.normal.copy(target?.normal ?? request.normal); contact.holdId = request.hold?.id ?? null;
     contact.orientation.setFromRotationMatrix(new Matrix4().makeBasis(right, up, normal));

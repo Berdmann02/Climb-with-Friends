@@ -4,7 +4,7 @@ export type LimbId=keyof PoseTargets;
 export const LIMBS:LimbId[]=['leftHand','rightHand','leftFoot','rightFoot'];
 export const isHand=(limb:LimbId)=>limb==='leftHand'||limb==='rightHand';
 export type GripType='jug'|'crimp'|'sloper'|'pinch'|'foothold'|'sidepull'|'undercling'|'pocket'|'edge';
-export type ContactKind='hold'|'smear'|'flag'|'free';
+export type ContactKind='hold'|'rock'|'palm'|'smear'|'flag'|'free';
 export type LimbState='attached'|'loaded'|'light'|'moving'|'slipping'|'free';
 export type ClimbPhase='idle'|'selected'|'prepare'|'release'|'moving'|'contact'|'settling'|'falling';
 export type StabilityLevel='stable'|'strained'|'unstable'|'critical'|'fall';
@@ -12,6 +12,11 @@ export interface ClimbSurface {
   id:string; origin:Vector3; normal:Vector3; up:Vector3;
   angle:number; // radians: negative slab, positive overhang
   friction:number; material:'plywood'|'rock'; bounds:WallSpec;
+  sampleRock?:(point:Vector3)=>RockSample|null;
+}
+export interface RockSample {
+  point:Vector3; normal:Vector3; grip:GripType; strength:number; friction:number;
+  direction:Vector3; edgeDepth:number; roughness:number;
 }
 export interface LimbContact {
   limb:LimbId; kind:ContactKind; state:LimbState;
@@ -19,8 +24,9 @@ export interface LimbContact {
   holdId:string|null; grip:GripType; direction:Vector3;
   strength:number; friction:number; quality:number; load:number;
   rotation:number; planted:boolean;
+  slipDistance?:number;
 }
-export interface ContactRequest { point:Vector3; normal:Vector3; hold?:HoldData; surfaceHit?:boolean; }
+export interface ContactRequest { point:Vector3; normal:Vector3; hold?:HoldData; surfaceHit?:boolean; rock?:RockSample; }
 export interface BodyPose {
   root:Vector3; pelvis:Vector3; centerOfMass:Vector3;
   torsoRotation:Vector3; hipRotation:Vector3;

@@ -40,20 +40,21 @@ Browser integration checks use Playwright through `npm run test:browser`. The de
 | Climb | Q / W | Release and directly control left / right hand |
 | Climb | A / S | Release and directly control left / right foot |
 | Climb | Mouse movement | Continuously reach with the free limb |
-| Climb | Left click | Grip the contacted hold, or plant a foot against the wall |
+| Climb | Left click | Attempt contact at the actual palm/toe, even when the mouse exceeds reach |
 | Climb | Backspace | Release the selected limb |
 | Developer | F3 | Toggle contact / center-of-mass overlay (off by default) |
 | Outdoor climb | C | Clip a nearby quickdraw |
 | Climb | X | Release into a rope fall or drop onto the bouldering mat |
 | Roped climb | Tab | Switch climber / belayer roles |
+| Outdoor rope bag | E | Belay the route partner |
 | Belay | F | Feed rope |
 | Belay | G | Take slack |
 | Belay | Space | Brake / catch |
 | Belay | L | Lower partner |
 
-Pressing a limb key removes its support immediately. The free hand or foot follows the mouse with damping and fixed anatomical limits; clicking only establishes contact if the limb has reached that surface. You can change direction before gripping, or switch limbs while leaving the previous limb detached. Attached contacts stay where you put them. Balance and body positioning update throughout the movement, with physical tension, slipping and falls instead of reach warnings. Right-drag orbits the camera without dragging the free target during the orbit.
+Pressing a limb key removes its support immediately. The free hand or foot follows the mouse with damping and fixed anatomical limits; clicking only establishes contact if the limb has reached that surface. You can change direction before gripping, or switch limbs while leaving the previous limb detached. Secure contacts stay where you put them. Bare-wall palms provide only weak bracing; excess shear and outward pulling make them slide and release. Balance and body positioning update throughout the movement, with physical tension, slipping and falls instead of reach warnings. Right-drag orbits the camera without dragging the free target during the orbit.
 
-The camera stays behind the belayer and looks up toward the climber. In local belayer mode the partner maintains the last limb intentions and remains subject to stability. Switch back to control their limbs; there is no automatic route progression. The climber sees a short harness strand and nearby protection, while the belayer sees the full rope path.
+The camera stays behind the belayer and looks up toward the climber. Outdoors, approach the open rope bag and press E to belay the sole route partner. Your character walks into stance while the partner climbs with the same continuous limb/body solver. F feeds, G takes, Space brakes, and L lowers. The bag holds a route/climber/belayer reservation until the session ends. Tab retains the existing role switch during your own roped climb. The climber sees a short harness strand and nearby protection, while the belayer sees the full rope path.
 
 ## Route workshop
 
@@ -75,11 +76,11 @@ Feet stay where you put them. Release a foot, move it to bare wall and click to 
 | TOP_ROPE | Tall right gym lane | Harness, fixed top anchor, belayer | Remain hanging; E continues, L lowers | Match both hands, one-second hold, automatic gradual lowering |
 | LEAD | Juniper Ridge | Rope and progressively clipped quickdraws | Hang from the last clipped protection; E continues, L lowers | Match both hands, transfer to the final lower-off, automatic gradual lowering |
 
-Completion requires two secure, separated hand contacts on the **same** designated finish feature. Height and a single hand do not finish a route. Returning from a rope rest keeps the caught position: the body approaches the wall, the rope supports it, and the player reconnects every limb manually. The rope support ends after hands and a foot establish a sustainable stance. A fall before the first outdoor clip reaches the ground rather than creating a fictional overhead catch.
+Gym completion requires two secure, separated hand contacts on the **same** designated finish hold. Outdoors, establish both hands on usable rock at the lower-off bedding seam near the anchor. A single hand does not finish a route. Returning from a rope rest keeps the caught position: the body approaches the wall, the rope supports it, and the player reconnects every limb manually. The rope support ends after hands and a foot establish a sustainable stance. A fall before the first outdoor clip reaches the ground rather than creating a fictional overhead catch.
 
-The reception counter near the gym entrance opens the three existing wall-color moods. Wall interactions are gated by distance and facing. Normal climbing shows only meters and a compact Q/W/A/S wheel; small prompts appear for available physical actions. The old route/session cards, footer slogan, Start Climbing card, and multiplayer badge have been removed.
+The reception counter near the gym entrance opens the three existing wall-color moods. A border and check mark identify the applied mood and remain correct when reopening the dialog or returning to the cached gym. Wall interactions are gated by distance and facing. Normal climbing shows only meters and a compact Q/W/A/S wheel; small prompts appear for available physical actions. The old route/session cards, footer slogan, Start Climbing card, and multiplayer badge have been removed.
 
-Outdoor routes use procedural granite edges, irregular knobs, flakes, pockets and rails with buried roots, stone textures and hidden grip metadata. The existing hold/grip categories drive simulation, but no resin models, bright route colors, tape or hold bolts render on outdoor contact features. Smears raycast the actual cliff surface.
+The outdoor cliff is one continuous granite mesh with broad slabs/corners, embedded bedding rails, flakes, pockets, fracture grooves and fine roughness. Outdoor route holds are not rendered or used for contact. Hand and foot sampling interpolates the exact visible mesh triangles and derives hidden grip categories, friction and strength from their slope, edge depth and curvature. Smooth patches allow weak palms or foot smears. No feature highlights or route suggestions are shown. The visible central rock face is climbable across its width, including beyond the lead route corridor.
 
 ## Current prototype
 
@@ -116,7 +117,7 @@ World factories return a `World`: scene group, collision boxes, camera obstacles
 
 The prototype uses Three.js, TypeScript, Vite, Vitest and Playwright. Static exploration collisions and a deterministic rope approximation keep this slice lightweight; Rapier is not currently required. An authoritative physics layer can be added behind the existing gameplay interfaces when moving beyond static worlds and local sessions.
 
-`ClimbInput` projects pointer intent onto the surface. `LimbTargetController` integrates damped free-limb motion and enforces anatomical limits. `BodyPoseSolver` constrains the body around planted contacts; `StabilitySolver` evaluates support and torque each frame. `ClimbingController` owns attachment, slipping and fall handoff. `ContactSolver` resolves actual contact surfaces and grip transforms. Rope presentation is selected independently through `RopeController.setView()`. `WorldInteractions` gates access at physical locations, `ClimbFinishController` owns the success pause, and `BoulderController` owns drops and mat recovery. `NaturalRockFeatures` supplies reusable outdoor contact meshes without exposing their metadata.
+`ClimbInput` projects pointer intent onto the surface. `LimbTargetController` integrates damped free-limb motion and enforces anatomical limits. `BodyPoseSolver` constrains the body around planted contacts; `StabilitySolver` evaluates support and torque each frame. `ClimbingController` owns attachment, slipping and fall handoff. `ContactSolver` resolves actual contact surfaces and grip transforms. Rope presentation is selected independently through `RopeController.setView()`. `WorldInteractions` gates access at physical locations, `ClimbFinishController` owns the success pause, and `BoulderController` owns drops and mat recovery. `GripResolver` queries a configurable 7 cm neighborhood around the rendered palm/toe; cursor projection supplies intent only. `WallContactResolver` integrates friction overload into sliding distance. `NaturalRockSurface` builds the cohesive cliff and samples its exact triangle topology. `PartnerClimbController` supplies private limb intentions for the route partner, and `BelayInteraction` owns the rope reservation.
 
 ## Assets and Blender pipeline
 
@@ -143,9 +144,9 @@ Assets use meters, +Y up, and +Z outward. Hold and volume origins are at the wal
 - Local play is the primary experience. There is no hosted room service, remote account system, matchmaking or production network authority.
 - Belaying and falls are readable approximations. The rope is not a full collision-aware physical cable, and equipment is not a training model.
 - Limbs use procedural posing, not authored motion-capture animation. Extreme custom route spacing can exceed reach or produce awkward transitions. Contact friction, balance and arm strain are tuned game approximations rather than a biomechanics simulation.
-- This interaction/mode pass was implemented without tests, builds, linting, type checks, browser automation or gameplay runs, as requested. No test files or infrastructure were changed. Existing checks predate these flows. Manual inspection should focus on reception/wall prompt distance, matched-finish hand spacing, rope-supported reattachment, lowering clearance, natural feature contacts and landing timing.
+- This development pass was implemented without tests, builds, linting, type checks, browser automation or gameplay runs, as requested. No test files or infrastructure were changed. Manual tuning should focus on the 7 cm contact radius, palm friction/slip distance, natural-rock grip thresholds, partner pacing/recovery, rope catches and cliff performance.
 - Hold contact samples and simplified articulated fingers reuse the existing assets; there are no individually authored grip markers for every possible surface. Rope suppression crops a local curved strand rather than fading individual segments, and it does not yet use wall or camera collision.
-- The gym currently exposes two editable lanes on the existing wall, with fixed modes. Neighboring faces remain decorative. Outdoor hand contacts are authored mesh features; arbitrary cliff locations support foot smears, not automatic hand-grip detection. The body solver still uses a shared wall basis rather than fully curved surface traversal.
+- The gym currently exposes two editable lanes on the existing wall, with fixed modes. Neighboring faces remain decorative. Outdoor contact uses a cohesive heightfield, supporting flakes, lips and local undercling normals but not caves or fully enclosed 3D crack systems. The body solver retains a shared wall basis with sampled torso clearance rather than full curved-surface traversal. Rope reservations are local with an authority synchronization hook; network-wide arbitration still needs a room server.
 - Boulder recovery uses three procedural landing envelopes, not a full ragdoll or an authored tumble rig. Top-outs, crash-mat deformation and injury simulation are outside scope. Finishing lead routes automatically transfers to the terminal lower-off; detailed anchor cleaning is not simulated.
 - Collision uses simple static volumes. Props are decorative and cannot yet be moved or physically manipulated.
 - Gym ownership, full decoration tools, progression, cosmetics, additional mountains and a deep fatigue model are outside this slice.
@@ -156,7 +157,7 @@ Assets use meters, +Y up, and +Z outward. Hold and volume origins are at the wal
 
 1. In a separately authorized verification pass, update the previous discrete-movement checks and tune continuous mouse control, body response, correction windows and hand/foot alignment with climbers and new players.
 2. Add an authoritative room server and test actual two-person climb/belay ownership before expanding progression.
-3. Author playable slab/overhang routes against the existing surface-angle and friction contract; expand outdoor hand-grip zones and ledges.
+3. Author playable slab/overhang routes against the existing surface-angle and friction contract; tune natural-rock topology and contact thresholds.
 4. Refine the character rig and add authored motion accents for clipping, resting, chalking and rope handling.
 5. Introduce persistent gym layouts and a small furniture customization loop, then route browsing/sharing between friends.
 6. Add collision-aware rope contacts, more outdoor route choices, spatial ambience and an expanded lighting/animation polish pass.

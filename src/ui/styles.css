@@ -260,4 +260,6 @@ dialog>p{font-size:12px;color:var(--muted);line-height:1.7}
 .mood-presets{display:grid;gap:12px;margin-top:24px}
 .mood-presets button{padding:14px 16px;text-align:left;border:1px solid var(--line);border-radius:5px;background:#e0cfad}
 .mood-presets button:nth-child(2){background:#a9b7a2}.mood-presets button:nth-child(3){background:#c5ada0}
+.mood-presets button.selected{border:2px solid #6d7258;padding:13px 15px;font-weight:650;box-shadow:0 2px 7px #626b4920}
+.mood-presets button.selected::after{content:'✓';float:right;color:#43533d}
 @media(max-width:700px){.climbing-hud{right:16px;bottom:18px}.limb-wheel{width:102px;height:102px;padding:8px;gap:8px}.interaction-prompt{bottom:28px;font-size:11px;gap:14px}}
